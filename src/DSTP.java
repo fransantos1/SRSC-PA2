@@ -44,6 +44,35 @@ import javax.xml.crypto.Data;
     MACKEY_SIZE: integer representing the size of the MACKEY in BITS
  */
 
+
+
+
+/*
+TCP, following a Client/Server Model
+
+
+
+
+
+ • Password-based encryption methods
+• Public-key cryptography
+• Digital signatures
+• Diffie-Hellman key agreement"
+
+
+
+
+
+Phase 01 (16 vals I think)
+    • Use of Password Based Encryption (LAB 3 Materials), Digital Signatures and HMAC as
+        basic Cryptographic Constructions for Phase 1
+Phase 02
+     •Use of Password Based Encryption (LAB 3 Materials), Digital Signatures, DiffieHellman Agreements and HMAC as required Cryptographic Constructions for Phase 2
+     • Complementary improvements
+
+ */
+
+
 public class DSTP {
 
     private final static String defaultPathToConfig = "./cryptoconfig.txt";
