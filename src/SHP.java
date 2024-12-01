@@ -5,6 +5,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
+import DataBase.User;
+
 /*
 TCP, following a Client/Server Model
 
@@ -43,50 +45,23 @@ SHP Message Payload  (Variable Size, depending on the MsgType)
 import DataBase.dataBaseManager;
 
 public class SHP {
-    private final int HEADERSIZE = 2;
     private int ver = 0;
     private int release = 0;
 
 
     public SHP (){}
     public void client() throws IOException{
-        /*
-    message 3(type 3): client-> server
-        PBEH(password), Salt, Counter (request, userID, Nonce3+1, Nonce4 , udp_port),
-        DigitalSig (request, userID, Nonce3+1, Nonce4 , udp_port ),
-        HMACkmac (X)
+        User client = new User("alice@gmail.com", "StrongPassword123", "4f1b78329c106679a3dbec3cd9d97b0b", null);
 
-        MsgType 3 size: Size depending on used cryptographic constructions in message components
-        request: the request, according to the application (ex., movie or files to transfer)
-        PBE() : Must choose a secure PasswordBasedEncryption scheme
-        DigitlSig() : an ECDSA Signature, made with the client ECC private key (with a selected curve)
-        HMAC(): Must choose a secure HMAC construction, with the kmac derived from the password
-        X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check
-
-   
-
-    message 5(type 5): client-> server
-        Eks (”GO”, Nonce5 + 1), MACKmac (Eks (”GO”, Nonce5 + 1))
-
-        MsgType 5: is just a synchronization message, the Keys for E() and MAC() are those received
-        in crypto config (in cipersuite.conf) sent from the server in MsgType 4).
-        MsgType 5 size: dependis on the used cryptographic constructions, with Ks and Kmac
-        depending on the configurations in ciphersuite.conf
-        In this message, the client informs the server that it will be able to use the established
-        cryptographic configurations (and included keys), as well as proving knowledge of the
-        cryptographic keys to use with the symmetric cryptographic constructions, the symmetric
-        cryptographic algorithms, and the MAC constructions (HMAC or SHA) that have been
-        established.
-         */
-
+        int udp_port = 5001;
         Socket socket = new Socket();
-        socket.connect(new InetSocketAddress("127.0.0.1", 5001), 1000);
+        socket.connect(new InetSocketAddress("127.0.0.1", udp_port), 1000);
         System.out.println("Connection Successful!");
         DataInputStream dataIn = new DataInputStream(socket.getInputStream());
         DataOutputStream dataOut = new DataOutputStream(socket.getOutputStream());
 
         int type = 1;
-        byte[] msg = "eusouofran@gmail.com".getBytes();
+        byte[] msg = client.getId().getBytes();
         byte[] Nonces = new byte[48];
         
         while(true){
@@ -113,12 +88,40 @@ public class SHP {
                         System.out.print(" Nonce " + (i + 1) + ": " + bytesToHex(nonce));
                     }
                     System.out.println("\n");
+
                     //-------------------------------------------- SEND MESSAGE 3 ---------------------------------------------------------//
+
+                    /* message 3(type 3): client-> server
+                        PBE H(password),Salt,Counter (request, userID, Nonce3+1, Nonce4 , udp_port),
+                        DigitalSig (request, userID, Nonce3+1, Nonce4 , udp_port ),
+                        HMACkmac (X)
+                        MsgType 3 size: Size depending on used cryptographic constructions in message components
+                        request: the request, according to the application (ex., movie or files to transfer)
+                        PBE() : Must choose a secure PasswordBasedEncryption scheme
+                        DigitlSig() : an ECDSA Signature, made with the client ECC private key (with a selected curve)
+                        HMAC(): Must choose a secure HMAC construction, with the kmac derived from the password
+                        X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check*/
+
+
+
                     type = 3;
                     break;
                 case 4:
                     //-------------------------------------------- RECIEVE MESSAGE 4 ------------------------------------------------------//
+
                     //-------------------------------------------- SEND MESSAGE 5 ---------------------------------------------------------//
+                    /*message 5(type 5): client-> server
+                        Eks (”GO”, Nonce5 + 1), MACKmac (Eks (”GO”, Nonce5 + 1))
+
+                        MsgType 5: is just a synchronization message, the Keys for E() and MAC() are those received
+                        in crypto config (in cipersuite.conf) sent from the server in MsgType 4).
+                        MsgType 5 size: dependis on the used cryptographic constructions, with Ks and Kmac
+                        depending on the configurations in ciphersuite.conf
+                        In this message, the client informs the server that it will be able to use the established
+                        cryptographic configurations (and included keys), as well as proving knowledge of the
+                        cryptographic keys to use with the symmetric cryptographic constructions, the symmetric
+                        cryptographic algorithms, and the MAC constructions (HMAC or SHA) that have been
+                        established.*/
                     type = 5;
                     break;
             }
@@ -133,22 +136,7 @@ public class SHP {
     public void server() throws IOException{
         SecureRandom secrandom = new SecureRandom();
         dataBaseManager DB = new dataBaseManager();
-        /*
- 
 
-            message 4(type 4): server-> client
-                Ekpubclient (request-confirmation, Nonce4+1, Nonce5, crypto config),
-                DigitalSig (request-confirmation, userID, Nonce4+1, Nonce5 , crypto config),
-                HMACkmac (X)
-
-                MsgType 4 size: size depending on used cryptographic constructions
-                Request-confirmation: confirmation of client request (message type 3)
-                DigitlSig: an ECDSA Signature, made with the client ECC probate key (with a selected curve)
-                Must choose a secure HMAC construction, with the kmac as used in MsgType3
-                Crypto config: datatype to send the Crypto configurations (ciphersuite.conf)
-                X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check
-
-        */
        
         ServerSocket serverSocket = new ServerSocket(5001);
         System.out.println("Listening for clients...");
@@ -162,7 +150,7 @@ public class SHP {
 
 
         int type = 0;
-        byte[] msg = "hello from server".getBytes();
+        byte[] msg = null;
         while(true){
             SHPPacket inpacket = recievePacket(dataIn);
             switch(inpacket.getMsgType()){
@@ -170,6 +158,10 @@ public class SHP {
                     //-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//3
                     String userID = new String(inpacket.getMsg());
                     System.out.println("Recieved usrID: "+ userID);
+                    System.out.println("Getting full account");
+                    User usr = DB.getUser(userID);
+                    System.out.println("full User: "+ usr.toString());
+
                     //-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//
                     /* message 2(type 2): server-> client
                             48 bytes
@@ -189,6 +181,17 @@ public class SHP {
                 case 3:
                     //-------------------------------------------- RECIEVE MESSAGE 3 ----------------------------------------------------------//
                     //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
+                    /*message 4(type 4): server-> client
+                            Ekpubclient (request-confirmation, Nonce4+1, Nonce5, crypto config),
+                            DigitalSig (request-confirmation, userID, Nonce4+1, Nonce5 , crypto config),
+                            HMACkmac (X)
+
+                            MsgType 4 size: size depending on used cryptographic constructions
+                            Request-confirmation: confirmation of client request (message type 3)
+                            DigitlSig: an ECDSA Signature, made with the client ECC probate key (with a selected curve)
+                            Must choose a secure HMAC construction, with the kmac as used in MsgType3
+                            Crypto config: datatype to send the Crypto configurations (ciphersuite.conf)
+                            X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check*/
                     type = 4;
                     break;
                 case 5:
@@ -230,18 +233,11 @@ public class SHP {
         return packet;
     }
 
-    public static String bytesToHex(byte[] bytes) {
+    private static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
     }
-
 }   
-
-
-
-/*
-     
-                     */
