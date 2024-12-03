@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.security.Security;
 
 import DataBase.User;
 import DataBase.dataBaseManager;
@@ -6,41 +7,33 @@ import DataBase.dataBaseManager;
 public class testSHP {
     
     public static void main(String[] args) {
-       String email = "StrongPassword123";
-       String password = "StrongPassword123";
-
-        dataBaseManager DB = new dataBaseManager();
-
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
         if(args.length == 0){
             System.out.println("No Params");
             return;
         }
-        SHP shp = new SHP();
         if(args[0].equals("c")){
-            testClient(shp);
+            testClient();
         }else{
-            testServer(shp);
+            testServer();
         }
-
-        // Print a welcome message to the console
-        System.out.println("Welcome to the Java Program!");
-
-        // Example usage: Call a method or class
        
     }
-    public static void testClient(SHP shp){
+    public static void testClient(){
         try {
-            shp.client();
-        } catch (IOException e) {
+            client_shp_phase1 client= new client_shp_phase1();
+            client.client();
+        } catch (Exception e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
     }
 
-    public static  void testServer(SHP shp){
+    public static  void testServer(){
         try {
-            shp.server();
-        } catch (IOException e) {
+            server_shp_phase1 server = new server_shp_phase1();
+            server.server();
+        } catch (Exception e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }

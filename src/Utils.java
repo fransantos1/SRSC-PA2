@@ -3,6 +3,7 @@
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -127,4 +128,30 @@ public class Utils
         
         return bytes;
     }
+    public static byte[] incrementNonce(byte[] nonce) {
+        byte[] incrementedNonce = nonce.clone();
+        for (int i = incrementedNonce.length - 1; i >= 0; i--) {
+            if ((incrementedNonce[i] & 0xFF) == 0xFF) {
+                incrementedNonce[i] = 0; // Overflow, carry to the next byte
+            } else {
+                incrementedNonce[i]++;
+                break; // Stop after incrementing without carry
+            }
+        }
+        return incrementedNonce;
+    }
+    public static byte[] genNonce(int size){
+        SecureRandom secrandom = new SecureRandom();
+        byte[] nonce = new byte[16];
+        secrandom.nextBytes(nonce);
+        return nonce;
+    }
+
+    public static byte[] concenateArrayList(int size){
+        SecureRandom secrandom = new SecureRandom();
+        byte[] nonce = new byte[16];
+        secrandom.nextBytes(nonce);
+        return nonce;
+    }
+    
 }
