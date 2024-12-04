@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.security.Key;
 import java.security.KeyFactory;
 import java.security.KeyPair;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
@@ -14,14 +15,17 @@ import java.security.spec.ECGenParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Properties;
 
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 import DataBase.User;
 
@@ -43,6 +47,8 @@ public class client_shp_phase1 {
     }
 
     public void client() throws Exception{
+        User client = new User("alice@gmail.com", "24c1f255e20fbe37e8a7f7090c8d1c2923c39e2a9bc21146f876e174cb6d41ec", "4f1b78329c106679a3dbec3cd9d97b0b", null);
+
 
         Properties client_properties = new Properties();
         Properties server_properties = new Properties();
@@ -53,8 +59,8 @@ public class client_shp_phase1 {
         fis.close();
 
        
+        //--------------------------------------------------------------------- DIGITAL SIGNATURE -----------------------------------------------------------//
 
-        // DIGITAL SIGNATURE.
         KeyFactory keyFactory = KeyFactory.getInstance("ECDSA", "BC");
 
         //---------------------------------------------------------------------- PRIVATE KEY -----------------------------------------------------//
@@ -71,20 +77,26 @@ public class client_shp_phase1 {
         PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
         
         KeyPair keyPair = new KeyPair(publicKey, privateKey);
-        //----------------------------------------------------------------------SERVER PUBLIC KEY -----------------------------------------------//
+        //---------------------------------------------------------------------- SERVER PUBLIC KEY -----------------------------------------------//
 
         String publicKeyServer64 = server_properties.getProperty("PublicKey");
         byte[] publicKeyBytes_Server = Base64.getDecoder().decode(publicKeyServer64);
         X509EncodedKeySpec server_PublicKeySpec = new X509EncodedKeySpec(publicKeyBytes_Server);
         PublicKey serverPublicKey = keyFactory.generatePublic(server_PublicKeySpec);
-
-
-
        
         Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
 
 
-        User client = new User("alice@gmail.com", "24c1f255e20fbe37e8a7f7090c8d1c2923c39e2a9bc21146f876e174cb6d41ec", "4f1b78329c106679a3dbec3cd9d97b0b", null);
+        //---------------------------------------------------------------------- SECURE KEYHASHING ------------------------------------------------//
+
+        byte[] pwd_byteArr = Base64.getDecoder().decode(client.getPwd());
+        Mac hMac = Mac.getInstance("HMacSHA256");
+        Key hMacKey = new SecretKeySpec(pwd_byteArr, "HMacSHA256");
+
+
+        Cipher cipher;
+
+
         
 	   
 
@@ -144,9 +156,7 @@ public class client_shp_phase1 {
                         X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check*/
                     
                     
-                    ArrayList<byte[]> PBE_body = new ArrayList<>(); 
-                    ArrayList<byte[]> DigitalSig = new ArrayList<>(); 
-                
+                    ArrayList<byte[]> PBE_body = new ArrayList<>();
                     //request
                     byte[] request = "req2uest".getBytes();
                     PBE_body.add(request);
@@ -159,24 +169,11 @@ public class client_shp_phase1 {
                     PBE_body.add(nonce3_new);
                     //nonce4    
                     byte[] nonce4 = genNonce();
+                    nonces.add(nonce4);
                     PBE_body.add(nonce4);
                     //udpPort
                     byte[] udpPortSend = Utils.toByteArray(String.valueOf(udp_port));
                     PBE_body.add(udpPortSend);
-                    
-                    System.out.println("-------------------------------------------------");
-                    System.out.println("request     : " + new String(request) +
-                                    " | Size: " + request.length);
-                    System.out.println("usrid       : " + new String(usrid) +
-                                    " | Size: " + usrid.length);
-                    System.out.println("new Nonce3  : " + new BigInteger(1, nonce3_new).toString(16) +
-                                    " | Size: " + nonce3_new.length);
-                    System.out.println("nonce4      : " + new BigInteger(1, nonce4).toString(16) +
-                                    " | Size: " + nonce4.length);
-                    System.out.println("udpPortSend : " + Integer.parseInt(Utils.toString(udpPortSend)) +
-                                    " | Size: " + udpPortSend.length);
-                    System.out.println("-------------------------------------------------");
-                    
                     byte[] new_body = concenateByteArr(PBE_body);
 
                     char[] password = client.getPwd().toCharArray();
@@ -187,33 +184,109 @@ public class client_shp_phase1 {
                     }
                     System.out.println("}\n This has: "+ salt.length*8+" bits");
  
+
+                    ArrayList<byte[]> arrBody = new ArrayList<>();
+
                     // Encryption 
                     PBEKeySpec pbeSpec = new PBEKeySpec(password);
                     SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     Key sKey= keyFact.generateSecret(pbeSpec);
                     Cipher cEnc = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     cEnc.init(Cipher.ENCRYPT_MODE, sKey, new PBEParameterSpec(salt, iterationCount));
-                    
-                    // Signature
-                    signature.initSign(keyPair.getPrivate(), new SecureRandom());
-                    signature.update(new_body);
-
-                    ArrayList<byte[]> arrBody = new ArrayList<>();
+                
                     byte[] PBE = cEnc.doFinal(new_body);
                     arrBody.add(PBE);
 
+                    // Signature
+                    signature.initSign(keyPair.getPrivate(), new SecureRandom());
+                    signature.update(new_body);
                     byte[]  sigBytes = signature.sign();
                     arrBody.add(sigBytes);
+
+                    // hash
+                    hMac.init(hMacKey);
+
+                    hMac.update(new_body);
+
+                    byte[] hash = hMac.doFinal();
+                    arrBody.add(hash);
 
                     msg = concenateByteArr(arrBody);
 
                     type = 3;
-
-
-                    
                     break;
                 case 4:
                     //-------------------------------------------- RECIEVE MESSAGE 4 ------------------------------------------------------//
+                    ArrayList<byte[]> arrayBody = separateByteArr(inpacket.getMsg());
+                    byte[] encryptedBody = arrayBody.get(0);
+                    byte[] signedBody = arrayBody.get(1);
+                    byte[] hashBody = arrayBody.get(2);
+
+                    System.out.println(arrayBody.size());
+
+                    cipher = Cipher.getInstance("ECIES", "BC");
+                    cipher.init(Cipher.DECRYPT_MODE, keyPair.getPrivate());
+
+                    byte[] decrypted = cipher.doFinal(encryptedBody);
+                    ArrayList<byte[]> decBody = separateByteArr(decrypted);
+
+                    // verify Nonce
+                    byte[] inNonce4 = decBody.get(1);
+                    byte[] myNonce4 = new BigInteger(nonces.get(3)).add(BigInteger.ONE).toByteArray();
+                    if(!Arrays.equals(inNonce4, myNonce4)){
+                        System.out.println("Nonce 4 + 1 is not correct");
+                    }else{
+                        System.out.println("correct Nonce");
+                    }
+
+
+                    cryptoConfig configuration = cryptoConfig.fromByteArray(decBody.get(3));
+
+                    System.out.println(configuration.getCiphersuite());
+
+
+
+
+
+
+
+
+                    // SIGNATURE
+                    byte[] signedbody;
+                    ArrayList<byte[]> body2ArrayList = new ArrayList<>();
+                    body2ArrayList.add(decBody.get(0));
+                    byte[] userId = client.getId().getBytes();
+                    body2ArrayList.add(userId);
+                    body2ArrayList.add(decBody.get(1));
+                    body2ArrayList.add(decBody.get(2));
+                    body2ArrayList.add(decBody.get(3));
+                    signedbody = concenateByteArr(body2ArrayList);
+                    signature.initVerify(serverPublicKey);
+                    signature.update(signedbody);
+                    if (signature.verify(signedBody))
+                    {
+                        System.out.println("Assinatura ECDSA validada - reconhecida");
+                    }
+                    else
+                    {
+                        System.out.println("Assinatura nao reconhecida");
+                        break;
+                    }
+
+                    // HASH
+
+                    hMac.update(decrypted, 0,decrypted.length);
+                    byte[] newHash = hMac.doFinal();
+                    if(!MessageDigest.isEqual(newHash, hashBody)){
+                        System.out.println("Incorrect HASH");
+                        //break;
+                    }
+
+
+
+
+
+                    
 
                     //-------------------------------------------- SEND MESSAGE 5 ---------------------------------------------------------//
                     /*message 5(type 5): client-> server
@@ -307,7 +380,7 @@ public class client_shp_phase1 {
         ArrayList<byte[]> list = new ArrayList<>();
         int copyIndex = 0;
         int delIndex = 0;
-        System.out.println(bytesToHex(arr));
+        //System.out.println(bytesToHex(arr));
         for(int i = 0; i < arr.length; i++){
             if(arr[i] != delimiter[delIndex]){
                 delIndex = 0;

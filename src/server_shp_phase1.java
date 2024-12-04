@@ -4,6 +4,7 @@ import java.security.Key;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
@@ -24,9 +25,11 @@ import java.util.List;
 import java.util.Properties;
 
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 import DataBase.*;
 
@@ -66,6 +69,7 @@ public class server_shp_phase1 {
         properties.load(fis);
         fis.close();
 
+
         String privateKeyBase641 = properties.getProperty("PrivateKey");
         String publicKeyBase641 = properties.getProperty("PublicKey");
 
@@ -89,7 +93,12 @@ public class server_shp_phase1 {
         Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
 
 
+        
+        Mac hMac = Mac.getInstance("HMacSHA256");
+        Key hMacKey = null;
 
+
+        Cipher cipher;
 
         SecureRandom secrandom = new SecureRandom();
         dataBaseManager DB = new dataBaseManager();
@@ -111,6 +120,8 @@ public class server_shp_phase1 {
         byte[] msg = null;
         boolean isErr = false;
         PublicKey clientPubKey = null;
+
+        
         while(true){
             SHPPacket inpacket = recievePacket(dataIn);
             switch(inpacket.getMsgType()){
@@ -125,6 +136,11 @@ public class server_shp_phase1 {
                     X509EncodedKeySpec client_keySPEC = new X509EncodedKeySpec(client_keybytes);
                     clientPubKey = keyFactory.generatePublic(client_keySPEC);
 
+
+                    byte[] pwd_byteArr = Base64.getDecoder().decode(user.getPwd());
+                    hMacKey = new SecretKeySpec(pwd_byteArr, "HMacSHA256");
+                    hMac.init(hMacKey);
+                    
                     System.out.println("full User: "+ user.toString());
 
                     //-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//
@@ -151,6 +167,7 @@ public class server_shp_phase1 {
                     ArrayList<byte[]> bodyArr = separateByteArr(input);
                     byte[] PBE = bodyArr.get(0);
                     byte[] sig = bodyArr.get(1);
+                    byte[] hash = bodyArr.get(2);
 
 
 
@@ -163,10 +180,10 @@ public class server_shp_phase1 {
                     byte[] inBytes = cDec.doFinal(PBE);
 
 
-                    ArrayList<byte[]> new_arrayList = separateByteArr(inBytes);
-                    String request = new String(new_arrayList.get(0));
+                    ArrayList<byte[]> inPBEArrayList = separateByteArr(inBytes);
+                    String request = new String(inPBEArrayList.get(0));
                     System.out.println("Request: "+request);
-                    String userid = new String(new_arrayList.get(1));
+                    String userid = new String(inPBEArrayList.get(1));
                     if(!userid.equals(user.getId())){
                         System.out.println("TYPE 3 RECIEVED: NOT THE RIGHT USER");
                         isErr = true;
@@ -175,20 +192,17 @@ public class server_shp_phase1 {
 
                     System.out.println("Still talking to the same correct User");
 
-                    byte[] inNonce3 = new_arrayList.get(2);
+                    byte[] inNonce3 = inPBEArrayList.get(2);
 
                     byte[] myNonce3 = new BigInteger(nonces.get(2)).add(BigInteger.ONE).toByteArray();
-                    System.out.println("Old nonce3   : " + bytesToHex(nonces.get(2)));
-                    System.out.println("In nonce3    : " + bytesToHex(inNonce3));
-                    System.out.println("My nonce3 +1 : " + bytesToHex(myNonce3));
                     if(!Arrays.equals(inNonce3, myNonce3)){
                         System.out.println("Nonce 3 is not correct");
                         isErr = true;
                         break;
                     }    
-                    nonces.add(new_arrayList.get(3));
+                    nonces.add(inPBEArrayList.get(3));
                     System.out.println("My nonce4    : " + bytesToHex(nonces.get(3)));
-                    int inUDP_port = Integer.parseInt(Utils.toString(new_arrayList.get(4)));
+                    int inUDP_port = Integer.parseInt(Utils.toString(inPBEArrayList.get(4)));
 
                     signature.initVerify(clientPubKey);
                     signature.update(inBytes);
@@ -199,6 +213,17 @@ public class server_shp_phase1 {
                     else
                     {
                         System.out.println("Assinatura nao reconhecida");
+                    }
+
+                    hMac.update(inBytes, 0, inBytes.length);
+                    System.out.println("hashing: " +Utils.toHex(inBytes));
+                    byte[] newHash = hMac.doFinal();
+                    System.out.println("old Hash: " +Utils.toHex(hash));
+                    System.out.println("new hash: " +Utils.toHex(newHash));
+                    if(!MessageDigest.isEqual(newHash, hash)){
+                        System.out.println("Incorrect HASH");
+                        isErr = true;
+                        break;
                     }
 
                     //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
@@ -213,6 +238,58 @@ public class server_shp_phase1 {
                             Must choose a secure HMAC construction, with the kmac as used in MsgType3
                             Crypto config: datatype to send the Crypto configurations (ciphersuite.conf)
                             X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check*/
+                    
+
+                    // Encrypted body
+                    ArrayList<byte[]> fullBodyArray = new ArrayList<>();
+
+                    byte[] body1;
+                    ArrayList<byte[]> body1Arr = new ArrayList<>();
+                    byte[] request_confirmation = inPBEArrayList.get(0);
+                    body1Arr.add(request_confirmation);
+                    byte[] nonce4_1 = new BigInteger(nonces.get(3)).add(BigInteger.ONE).toByteArray();
+                    body1Arr.add(nonce4_1);
+                    byte[] nonce5 = genNonce();
+                    body1Arr.add(nonce5);
+                    byte[] cryptoConfig = new cryptoConfig("cryptoconfig.txt").toByteArray(); 
+                    body1Arr.add(cryptoConfig);
+                    body1 = concenateByteArr(body1Arr);
+
+                    cipher = Cipher.getInstance("ECIES", "BC");
+                    cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
+                    byte[] encryptedMessage = cipher.doFinal(body1);
+
+                    fullBodyArray.add(encryptedMessage);
+
+
+                    // DIGITAL SIGNATURE
+                    
+                    byte[] body2;
+                    ArrayList<byte[]> body2ArrayList = new ArrayList<>();
+                    body2ArrayList.add(request_confirmation);
+                    byte[] userId = user.getId().getBytes();
+                    body2ArrayList.add(userId);
+                    body2ArrayList.add(nonce4_1);
+                    body2ArrayList.add(nonce5);
+                    body2ArrayList.add(cryptoConfig);
+                    body2 = concenateByteArr(body2ArrayList);
+
+                    signature.initSign(privateKey, new SecureRandom());
+                    signature.update(body2);
+                    byte[]  signedBody2 = signature.sign();
+
+                    fullBodyArray.add(signedBody2);
+
+                    // HMAC
+                    hMac.update(body1);
+
+                    byte[] sendHash = hMac.doFinal();
+
+                    System.out.println("New hash: " +Utils.toHex(sendHash));
+                    fullBodyArray.add(sendHash);
+
+                    msg = concenateByteArr(fullBodyArray);
+
                     type = 4;
                     break;
                 case 5:
@@ -231,7 +308,6 @@ public class server_shp_phase1 {
             SHPPacket outpacket = new SHPPacket(ver, release, type, msg);
             sendPacket(dataOut, outpacket);
   
-             
         }
         dataIn.close();
         dataOut.close();
