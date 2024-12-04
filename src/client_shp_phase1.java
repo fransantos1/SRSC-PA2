@@ -2,23 +2,34 @@
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.security.Key;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.SecureRandomSpi;
 import java.security.Security;
+import java.security.Signature;
+import java.security.spec.ECGenParameterSpec;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Properties;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 
+import DataBase.User;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-
-import DataBase.User;
 
 
 
@@ -26,11 +37,53 @@ public class client_shp_phase1 {
     private int ver = 0;
     private int release = 0;
     private static byte[] delimiter = {0x00, 0x1E, 0x52, 0x00};
+    private final String  path = "./Client/";
 
     public client_shp_phase1(){
     }
 
     public void client() throws Exception{
+
+        Properties client_properties = new Properties();
+        Properties server_properties = new Properties();
+        FileInputStream fis = new FileInputStream(path+"ClientECCKeyPair.sec");
+        client_properties.load(fis);
+        fis = new FileInputStream(path+"ServerECCPubKey.txt");
+        server_properties.load(fis);
+        fis.close();
+
+       
+
+        // DIGITAL SIGNATURE.
+        KeyFactory keyFactory = KeyFactory.getInstance("ECDSA", "BC");
+
+        //---------------------------------------------------------------------- PRIVATE KEY -----------------------------------------------------//
+        String privateKeyBase641 = client_properties.getProperty("PrivateKey");
+        byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyBase641);
+        PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+        PrivateKey privateKey = keyFactory.generatePrivate(privateKeySpec);
+
+        //---------------------------------------------------------------------- PUBLIC KEY -----------------------------------------------------//
+
+        String publicKeyBase641 = client_properties.getProperty("PublicKey");
+        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyBase641);
+        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
+        PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+        
+        KeyPair keyPair = new KeyPair(publicKey, privateKey);
+        //----------------------------------------------------------------------SERVER PUBLIC KEY -----------------------------------------------//
+
+        String publicKeyServer64 = server_properties.getProperty("PublicKey");
+        byte[] publicKeyBytes_Server = Base64.getDecoder().decode(publicKeyServer64);
+        X509EncodedKeySpec server_PublicKeySpec = new X509EncodedKeySpec(publicKeyBytes_Server);
+        PublicKey serverPublicKey = keyFactory.generatePublic(server_PublicKeySpec);
+
+
+
+       
+        Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
+
+
         User client = new User("alice@gmail.com", "24c1f255e20fbe37e8a7f7090c8d1c2923c39e2a9bc21146f876e174cb6d41ec", "4f1b78329c106679a3dbec3cd9d97b0b", null);
         
 	   
@@ -134,12 +187,26 @@ public class client_shp_phase1 {
                     }
                     System.out.println("}\n This has: "+ salt.length*8+" bits");
  
+                    // Encryption 
                     PBEKeySpec pbeSpec = new PBEKeySpec(password);
                     SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     Key sKey= keyFact.generateSecret(pbeSpec);
                     Cipher cEnc = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     cEnc.init(Cipher.ENCRYPT_MODE, sKey, new PBEParameterSpec(salt, iterationCount));
-                    msg = cEnc.doFinal(new_body);
+                    
+                    // Signature
+                    signature.initSign(keyPair.getPrivate(), new SecureRandom());
+                    signature.update(new_body);
+
+                    ArrayList<byte[]> arrBody = new ArrayList<>();
+                    byte[] PBE = cEnc.doFinal(new_body);
+                    arrBody.add(PBE);
+
+                    byte[]  sigBytes = signature.sign();
+                    arrBody.add(sigBytes);
+
+                    msg = concenateByteArr(arrBody);
+
                     type = 3;
 
 

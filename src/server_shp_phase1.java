@@ -1,25 +1,43 @@
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.security.Key;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.SecureRandomSpi;
 import java.security.Security;
+import java.security.Signature;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
+import java.security.spec.ECGenParameterSpec;
+import java.security.spec.ECPrivateKeySpec;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+import java.sql.ClientInfoStatus;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
+import java.util.Properties;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 
+import DataBase.*;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.math.BigInteger;
-
-import DataBase.User;
-import DataBase.dataBaseManager;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.util.Properties;
 
 
 
@@ -28,10 +46,12 @@ import DataBase.dataBaseManager;
 
 
 public class server_shp_phase1 {
+    private final String  path = "./Server/";
+
+
     private int ver = 0;
     private int release = 0;
     private static byte[] delimiter = {0x00, 0x1E, 0x52, 0x00};
-
     public server_shp_phase1(){
         
     }
@@ -40,6 +60,37 @@ public class server_shp_phase1 {
 
 
       public void server() throws Exception{
+
+        Properties properties = new Properties();
+        FileInputStream fis = new FileInputStream(path+"ServerECCKeyPair.sec");
+        properties.load(fis);
+        fis.close();
+
+        String privateKeyBase641 = properties.getProperty("PrivateKey");
+        String publicKeyBase641 = properties.getProperty("PublicKey");
+
+        // Decode the Base64 strings to byte arrays
+        byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyBase641);
+        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyBase641);
+
+
+        PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("ECDSA", "BC");
+        PrivateKey privateKey = keyFactory.generatePrivate(privateKeySpec);
+
+        // Reconstruct the public key
+        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
+        PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+
+        KeyPair keypair = new KeyPair(publicKey, privateKey);
+
+
+        ECGenParameterSpec ecSpec= new ECGenParameterSpec("secp256k1");
+        Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
+
+
+
+
         SecureRandom secrandom = new SecureRandom();
         dataBaseManager DB = new dataBaseManager();
 
@@ -59,6 +110,7 @@ public class server_shp_phase1 {
         int type = 0;
         byte[] msg = null;
         boolean isErr = false;
+        PublicKey clientPubKey = null;
         while(true){
             SHPPacket inpacket = recievePacket(dataIn);
             switch(inpacket.getMsgType()){
@@ -68,6 +120,11 @@ public class server_shp_phase1 {
                     System.out.println("Recieved usrID: "+ userID);
                     System.out.println("Getting full account");
                     user = DB.getUser(userID);
+                    String base64String = user.getKpubClient().replaceAll("\\s", ""); // Removes any spaces or newlines
+                    byte[] client_keybytes = Base64.getDecoder().decode(base64String);
+                    X509EncodedKeySpec client_keySPEC = new X509EncodedKeySpec(client_keybytes);
+                    clientPubKey = keyFactory.generatePublic(client_keySPEC);
+
                     System.out.println("full User: "+ user.toString());
 
                     //-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//
@@ -88,16 +145,14 @@ public class server_shp_phase1 {
                 case 3:
                     //-------------------------------------------- RECIEVE MESSAGE 3 ----------------------------------------------------------//
                     byte[] input = inpacket.getMsg();
-
-
                     char[] password = user.getPwd().toCharArray();
                     byte[] salt = hexStringToByteArray(user.getSalt());
-                    System.out.print("Salt: {");
-                    for (int i = 0; i < salt.length; i++) {
-                        // Print each byte in the format 0xXX
-                        System.out.print("0x" + String.format("%02x", salt[i]) + (i < salt.length - 1 ? ", " : " "));
-                    }
-                    System.out.println("}\n This has: "+ salt.length*8+" bits");
+                    
+                    ArrayList<byte[]> bodyArr = separateByteArr(input);
+                    byte[] PBE = bodyArr.get(0);
+                    byte[] sig = bodyArr.get(1);
+
+
 
                     PBEKeySpec pbeSpec = new PBEKeySpec(password);
                     SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
@@ -105,7 +160,7 @@ public class server_shp_phase1 {
                     Cipher cDec = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                          
                     cDec.init(Cipher.DECRYPT_MODE, sKey, new PBEParameterSpec(salt, iterationCount));
-                    byte[] inBytes = cDec.doFinal(input);
+                    byte[] inBytes = cDec.doFinal(PBE);
 
 
                     ArrayList<byte[]> new_arrayList = separateByteArr(inBytes);
@@ -134,7 +189,17 @@ public class server_shp_phase1 {
                     nonces.add(new_arrayList.get(3));
                     System.out.println("My nonce4    : " + bytesToHex(nonces.get(3)));
                     int inUDP_port = Integer.parseInt(Utils.toString(new_arrayList.get(4)));
-                    
+
+                    signature.initVerify(clientPubKey);
+                    signature.update(inBytes);
+                    if (signature.verify(sig))
+                    {
+                        System.out.println("Assinatura ECDSA validada - reconhecida");
+                    }
+                    else
+                    {
+                        System.out.println("Assinatura nao reconhecida");
+                    }
 
                     //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
                     /*message 4(type 4): server-> client
@@ -271,5 +336,6 @@ public class server_shp_phase1 {
 
         return list;
     }
+    
     
 }
