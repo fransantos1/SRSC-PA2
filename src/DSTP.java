@@ -89,10 +89,9 @@ public class DSTP {
         System.out.println("Key: "+symetricKey+" Size: "+ keylen);
         keyBytes = new byte[keylen/8];
         for (int i = 0; i < symetricKey.length(); i += 2) {
-            // Convert the pair of hex characters to a byte
             keyBytes[i / 2] = (byte) (
-                (Character.digit(symetricKey.charAt(i), 16) << 4)  // First hex char
-                + Character.digit(symetricKey.charAt(i + 1), 16)   // Second hex char
+                (Character.digit(symetricKey.charAt(i), 16) << 4)  
+                + Character.digit(symetricKey.charAt(i + 1), 16)   
             );
         }
         System.out.println(" Size: "+ keyBytes.length);
@@ -132,18 +131,6 @@ public class DSTP {
             System.out.println("hMac: "+ hMac);
 
         }
-            
-
-        /*
-            Mac hMac = Mac.getInstance("HMacSHA256");
-            Key hMacKey =new SecretKeySpec(key.getEncoded(), "HMacSHA256");
-        
-         */
-
-
-        
-
-
 
 
 

@@ -23,6 +23,8 @@ import java.util.Properties;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import javax.crypto.SecretKeyFactory;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -45,6 +47,9 @@ public class client_shp_phase1 {
 
     public client_shp_phase1(){
     }
+
+    //! change nonce 
+    //! nonces cant be repeated so change the
 
     public void client() throws Exception{
         User client = new User("alice@gmail.com", "24c1f255e20fbe37e8a7f7090c8d1c2923c39e2a9bc21146f876e174cb6d41ec", "4f1b78329c106679a3dbec3cd9d97b0b", null);
@@ -97,12 +102,14 @@ public class client_shp_phase1 {
         Cipher cipher;
 
 
-        
+        CryptoConfig cryptoConfig;
+
+
+
 	   
-
-
-
         int iterationCount = 2048; 
+
+
         int udp_port = 5001;
 
         Socket socket = new Socket();
@@ -111,18 +118,21 @@ public class client_shp_phase1 {
         DataInputStream dataIn = new DataInputStream(socket.getInputStream());
         DataOutputStream dataOut = new DataOutputStream(socket.getOutputStream());
 
+
+        //-------------------------------------------- SEND MESSAGE 1 ---------------------------------------------------------//
         int type = 1;
         byte[] msg = client.getId().getBytes();
         ArrayList<byte[]> nonces = new ArrayList<>();
 
         
         while(true){
-            //-------------------------------------------- SEND MESSAGE 1 ---------------------------------------------------------//
-                /* message 1(type 1): client-> server
-                        320 Bytes max
-                        userId( String of max 320bytes )*/
+            
+
+
+            System.out.println("Sending Message: "+ Utils.toHex(msg));
             SHPPacket outpacket = new SHPPacket(ver, release, type, msg);
             sendPacket(dataOut, outpacket);
+            
             if(type == 5){
                 break;
             }
@@ -131,29 +141,15 @@ public class client_shp_phase1 {
             switch(inpacket.getMsgType()){
                 case 2:
                     //-------------------------------------------- RECIEVE MESSAGE 2 ------------------------------------------------------//
-                    byte[] body = inpacket.getMsg();
 
-                    System.out.print("Recieved 3 nonces:");
+                    byte[] body = inpacket.getMsg();
                     for (int i = 0; i < 3; i++) {
                         byte[] nonce = new byte[16];
                         System.arraycopy(body, i * 16, nonce, 0, 16);
                         nonces.add(nonce);
-                        System.out.print(" Nonce " + (i + 1) + ": " + bytesToHex(nonce));
                     }
-                    System.out.println("\n");
 
                     //-------------------------------------------- SEND MESSAGE 3 ---------------------------------------------------------//
-
-                    /* message 3(type 3): client-> server
-                            - PBE H(password),Salt,Counter (request, userID, Nonce3+1, Nonce4 , udp_port),
-                        DigitalSig (request, userID, Nonce3+1, Nonce4 , udp_port ),
-                        HMACkmac (X)
-                        MsgType 3 size: Size depending on used cryptographic constructions in message components
-                        request: the request, according to the application (ex., movie or files to transfer)
-                        PBE() : Must choose a secure PasswordBasedEncryption scheme
-                        DigitlSig() : an ECDSA Signature, made with the client ECC private key (with a selected curve)
-                        HMAC(): Must choose a secure HMAC construction, with the kmac derived from the password
-                        X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check*/
                     
                     
                     ArrayList<byte[]> PBE_body = new ArrayList<>();
@@ -167,6 +163,7 @@ public class client_shp_phase1 {
                     byte[] Nonce3 = nonces.get(2);
                     byte[] nonce3_new = new BigInteger(Nonce3).add(BigInteger.ONE).toByteArray();
                     PBE_body.add(nonce3_new);
+
                     //nonce4    
                     byte[] nonce4 = genNonce();
                     nonces.add(nonce4);
@@ -178,13 +175,7 @@ public class client_shp_phase1 {
 
                     char[] password = client.getPwd().toCharArray();
                     byte[] salt = hexStringToByteArray(client.getSalt());
-                    System.out.print("Salt: {");
-                    for (int i = 0; i < salt.length; i++) {
-                        System.out.print("0x" + String.format("%02x", salt[i]) + (i < salt.length - 1 ? ", " : " "));
-                    }
-                    System.out.println("}\n This has: "+ salt.length*8+" bits");
  
-
                     ArrayList<byte[]> arrBody = new ArrayList<>();
 
                     // Encryption 
@@ -205,9 +196,7 @@ public class client_shp_phase1 {
 
                     // hash
                     hMac.init(hMacKey);
-
-                    hMac.update(new_body);
-
+                    hMac.update(concenateByteArr(arrBody));
                     byte[] hash = hMac.doFinal();
                     arrBody.add(hash);
 
@@ -215,8 +204,11 @@ public class client_shp_phase1 {
 
                     type = 3;
                     break;
+
                 case 4:
+
                     //-------------------------------------------- RECIEVE MESSAGE 4 ------------------------------------------------------//
+
                     ArrayList<byte[]> arrayBody = separateByteArr(inpacket.getMsg());
                     byte[] encryptedBody = arrayBody.get(0);
                     byte[] signedBody = arrayBody.get(1);
@@ -238,18 +230,12 @@ public class client_shp_phase1 {
                     }else{
                         System.out.println("correct Nonce");
                     }
+                    System.out.println("Nonce 5:"+ Utils.toHex(decBody.get(2)));
+                    nonces.add(decBody.get(2));
 
+                    cryptoConfig = CryptoConfig.fromByteArray(decBody.get(3));
 
-                    cryptoConfig configuration = cryptoConfig.fromByteArray(decBody.get(3));
-
-                    System.out.println(configuration.getCiphersuite());
-
-
-
-
-
-
-
+                   
 
                     // SIGNATURE
                     byte[] signedbody;
@@ -281,29 +267,58 @@ public class client_shp_phase1 {
                         System.out.println("Incorrect HASH");
                         //break;
                     }
-
-
-
-
-
-                    
+                   
 
                     //-------------------------------------------- SEND MESSAGE 5 ---------------------------------------------------------//
-                    /*message 5(type 5): client-> server
-                        Eks (”GO”, Nonce5 + 1), MACKmac (Eks (”GO”, Nonce5 + 1))
-                        MsgType 5: is just a synchronization message, the Keys for E() and MAC() are those received
-                        in crypto config (in cipersuite.conf) sent from the server in MsgType 4).
-                        MsgType 5 size: dependis on the used cryptographic constructions, with Ks and Kmac
-                        depending on the configurations in ciphersuite.conf
-                        In this message, the client informs the server that it will be able to use the established
-                        cryptographic configurations (and included keys), as well as proving knowledge of the
-                        cryptographic keys to use with the symmetric cryptographic constructions, the symmetric
-                        cryptographic algorithms, and the MAC constructions (HMAC or SHA) that have been
-                        established.*/
+
+                    ArrayList<byte[]> newarrayBody = new ArrayList<>();                    
+                    byte[] part1 = "GO".getBytes();
+                    byte[] part2 = new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray();;
+                    newarrayBody.add(part1);
+                    newarrayBody.add(part2);
+
+                    byte[] fullbody = new byte[part1.length + part2.length];
+                    System.arraycopy(part1, 0, fullbody, 0, part1.length);
+                    System.arraycopy(part2, 0, fullbody, part1.length, part2.length);
+
+                    fullbody = concenateByteArr(newarrayBody);
+                    System.out.println("-----------------------------------------------------------------------");
+                    System.out.println("Full Body: " + Utils.toHex(fullbody));
+                    System.out.println("Full Body Length: " + fullbody.length);
+                    System.out.println("-----------------------------------------------------------------------");
+
+                    cipher = Cipher.getInstance(cryptoConfig.getCiphersuite());
+                    if (cryptoConfig.getIvSpec() != null) {
+                        cipher.init(Cipher.ENCRYPT_MODE, cryptoConfig.getKey(), cryptoConfig.getIvSpec());
+                    } else {
+                        cipher.init(Cipher.ENCRYPT_MODE, cryptoConfig.getKey());
+                    }
+                    byte[] encrypted = cipher.doFinal(fullbody);
+
+
+                    msg = encrypted;
+
+
+
+
+
+
+
+
+/*
+                    byte[] integrity;
+                    if(cryptoConfig.getDigestType() == cryptoConfig.HMAC){  
+                    }else{
+                    }
+
+                    ArrayList<byte[]> message5 = new ArrayList<>();
+ */
+
+ 
                     type = 5;
                     break;
             }
-
+            
         }
        
         dataIn.close();

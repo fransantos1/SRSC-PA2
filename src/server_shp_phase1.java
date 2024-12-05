@@ -70,6 +70,12 @@ public class server_shp_phase1 {
         fis.close();
 
 
+        // LOADING CRYPTO CONFIG
+
+
+        CryptoConfig cryptoConfig = new CryptoConfig("cryptoconfig.txt");
+
+
         String privateKeyBase641 = properties.getProperty("PrivateKey");
         String publicKeyBase641 = properties.getProperty("PublicKey");
 
@@ -124,9 +130,11 @@ public class server_shp_phase1 {
         
         while(true){
             SHPPacket inpacket = recievePacket(dataIn);
+            System.out.println("Recieved Message: "+ Utils.toHex(inpacket.getMsg()));
             switch(inpacket.getMsgType()){
                 case 1:
                     //-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//3
+
                     String userID = new String(inpacket.getMsg());
                     System.out.println("Recieved usrID: "+ userID);
                     System.out.println("Getting full account");
@@ -144,11 +152,7 @@ public class server_shp_phase1 {
                     System.out.println("full User: "+ user.toString());
 
                     //-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//
-                    /* message 2(type 2): server-> client
-                            48 bytes
-                            Nonce1, Nonce2, Nonce3
-                            Nonces: Secure Randomly Generatd by the Server, 128 bits each one (128*3 / 8 = 48) */
-
+        
                     msg = new byte[16*3];
                     for(int i = 0; i < 3; i++){
                         byte[] nonce = new byte[16];
@@ -160,49 +164,68 @@ public class server_shp_phase1 {
                     break;
                 case 3:
                     //-------------------------------------------- RECIEVE MESSAGE 3 ----------------------------------------------------------//
-                    byte[] input = inpacket.getMsg();
+                    
+                    ArrayList<byte[]> bodyArr = separateByteArr(inpacket.getMsg());
+                    byte[] hash = bodyArr.get(2);
+                    bodyArr.remove(2);
+
+
+                    // Verifying Hash
+                    // first thing because is the fastest
+
+                    hMac.update(concenateByteArr(bodyArr), 0, concenateByteArr(bodyArr).length);
+                    byte[] newHash = hMac.doFinal();
+                    if(!MessageDigest.isEqual(newHash, hash)){
+                        System.out.println("Incorrect HASH");
+                        isErr = true;
+                        break;
+                    }
+
+                    // Decrypting Body
+                    byte[] PBE = bodyArr.get(0);
+
+
                     char[] password = user.getPwd().toCharArray();
                     byte[] salt = hexStringToByteArray(user.getSalt());
-                    
-                    ArrayList<byte[]> bodyArr = separateByteArr(input);
-                    byte[] PBE = bodyArr.get(0);
-                    byte[] sig = bodyArr.get(1);
-                    byte[] hash = bodyArr.get(2);
-
-
-
                     PBEKeySpec pbeSpec = new PBEKeySpec(password);
                     SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     Key sKey= keyFact.generateSecret(pbeSpec);
                     Cipher cDec = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                          
                     cDec.init(Cipher.DECRYPT_MODE, sKey, new PBEParameterSpec(salt, iterationCount));
+
                     byte[] inBytes = cDec.doFinal(PBE);
-
-
                     ArrayList<byte[]> inPBEArrayList = separateByteArr(inBytes);
+
+                    // Request
                     String request = new String(inPBEArrayList.get(0));
-                    System.out.println("Request: "+request);
+
+                    //Validate UserId
                     String userid = new String(inPBEArrayList.get(1));
                     if(!userid.equals(user.getId())){
-                        System.out.println("TYPE 3 RECIEVED: NOT THE RIGHT USER");
+                        System.out.println("TYPE 3 RECIEVED : NOT THE RIGHT USER");
                         isErr = true;
                         break;
                     }
 
-                    System.out.println("Still talking to the same correct User");
-
-                    byte[] inNonce3 = inPBEArrayList.get(2);
-
-                    byte[] myNonce3 = new BigInteger(nonces.get(2)).add(BigInteger.ONE).toByteArray();
-                    if(!Arrays.equals(inNonce3, myNonce3)){
+                    // nonce challange
+                    byte[] challengeNonce3 = inPBEArrayList.get(2);
+                    byte[] correct_challengeNonce3 = new BigInteger(nonces.get(2)).add(BigInteger.ONE).toByteArray();
+                    if(!Arrays.equals(challengeNonce3, correct_challengeNonce3)){
                         System.out.println("Nonce 3 is not correct");
                         isErr = true;
                         break;
                     }    
-                    nonces.add(inPBEArrayList.get(3));
-                    System.out.println("My nonce4    : " + bytesToHex(nonces.get(3)));
+
+                    // new nonce
+                    byte[] nonce4 = inPBEArrayList.get(3);
+                    nonces.add(nonce4);
+
+                    // client UDP_port
                     int inUDP_port = Integer.parseInt(Utils.toString(inPBEArrayList.get(4)));
+
+
+                    byte[] sig = bodyArr.get(1);
 
                     signature.initVerify(clientPubKey);
                     signature.update(inBytes);
@@ -214,31 +237,11 @@ public class server_shp_phase1 {
                     {
                         System.out.println("Assinatura nao reconhecida");
                     }
-
-                    hMac.update(inBytes, 0, inBytes.length);
-                    System.out.println("hashing: " +Utils.toHex(inBytes));
-                    byte[] newHash = hMac.doFinal();
-                    System.out.println("old Hash: " +Utils.toHex(hash));
-                    System.out.println("new hash: " +Utils.toHex(newHash));
-                    if(!MessageDigest.isEqual(newHash, hash)){
-                        System.out.println("Incorrect HASH");
-                        isErr = true;
-                        break;
-                    }
-
-                    //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
-                    /*message 4(type 4): server-> client
-                            Ekpubclient (request-confirmation, Nonce4+1, Nonce5, crypto config),
-                            DigitalSig (request-confirmation, userID, Nonce4+1, Nonce5 , crypto config),
-                            HMACkmac (X)
-
-                            MsgType 4 size: size depending on used cryptographic constructions
-                            Request-confirmation: confirmation of client request (message type 3)
-                            DigitlSig: an ECDSA Signature, made with the client ECC probate key (with a selected curve)
-                            Must choose a secure HMAC construction, with the kmac as used in MsgType3
-                            Crypto config: datatype to send the Crypto configurations (ciphersuite.conf)
-                            X: the content of all (encrypted and signed) components in the message, to allow a fast message authenticity and integrity check*/
                     
+                    
+                
+                    //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
+
 
                     // Encrypted body
                     ArrayList<byte[]> fullBodyArray = new ArrayList<>();
@@ -251,8 +254,11 @@ public class server_shp_phase1 {
                     body1Arr.add(nonce4_1);
                     byte[] nonce5 = genNonce();
                     body1Arr.add(nonce5);
-                    byte[] cryptoConfig = new cryptoConfig("cryptoconfig.txt").toByteArray(); 
-                    body1Arr.add(cryptoConfig);
+                    nonces.add(nonce5);
+
+
+                    byte[] cryptoConfByteArr = cryptoConfig.toByteArray();
+                    body1Arr.add(cryptoConfByteArr);
                     body1 = concenateByteArr(body1Arr);
 
                     cipher = Cipher.getInstance("ECIES", "BC");
@@ -271,7 +277,7 @@ public class server_shp_phase1 {
                     body2ArrayList.add(userId);
                     body2ArrayList.add(nonce4_1);
                     body2ArrayList.add(nonce5);
-                    body2ArrayList.add(cryptoConfig);
+                    body2ArrayList.add(cryptoConfByteArr);
                     body2 = concenateByteArr(body2ArrayList);
 
                     signature.initSign(privateKey, new SecureRandom());
@@ -294,6 +300,41 @@ public class server_shp_phase1 {
                     break;
                 case 5:
                     //-------------------------------------------- RECIEVE MESSAGE 5 ----------------------------------------------------------//
+                    System.out.println("//-------------------------------------------- RECIEVED MESSAGE 5 ----------------------------------------------------------//");
+                    byte[] encrypted = inpacket.getMsg();
+                    cipher = Cipher.getInstance(cryptoConfig.getCiphersuite());
+                    if (cryptoConfig.getIvSpec() != null) {
+                        cipher.init(Cipher.DECRYPT_MODE, cryptoConfig.getKey(), cryptoConfig.getIvSpec());
+                    } else {
+                        cipher.init(Cipher.DECRYPT_MODE, cryptoConfig.getKey());
+                    }
+
+
+
+                    byte[] extratedBody =new byte[cipher.getOutputSize(encrypted.length)];
+                    System.out.println("predicted size: " + cipher.getOutputSize(encrypted.length));
+
+
+                    int ptLen = cipher.update(encrypted,0, encrypted.length, extratedBody,0);
+                    cipher.doFinal(extratedBody, ptLen);
+
+                    ArrayList<byte[]> decryptedBody = separateByteArr(extratedBody);
+                    
+                    System.out.println("-----------------------------------------------------------------------");
+                    System.out.println("Decrypted: " + Utils.toHex(extratedBody));
+                    System.out.println("Decrypted Length: " + extratedBody.length);
+                    System.out.println("Array size: " + decryptedBody.size());
+                    System.out.println("GO part: " + new String(decryptedBody.get(0)));
+                    System.out.println("Nonce :" + Utils.toHex(decryptedBody.get(1)));
+                    System.out.println(Arrays.equals(decryptedBody.get(1),  new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray()));
+                    System.out.println("-----------------------------------------------------------------------");
+                    
+
+
+                    
+
+
+
                     type = 5;
                     break;
             }
