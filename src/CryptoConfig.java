@@ -17,13 +17,17 @@ public class CryptoConfig implements Serializable {
     public final int HMAC = 1;
 
 
-    private String ciphersuite_str ;
-    private String symetricKey_str;
-    private String IV_str;
-    private String Integrity_str;
-    private String Hash_algorithm_str;
-    private String MAC_algorithm_str;
-    private String MacKey_str;
+    private String ciphersuite_str ;//CONFIDENTIALIY=AES/CTR/NoPadding
+    private String symetricKey_str;//SYMMETRIC_KEY=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
+    private String symetricKeySize_str;//SYMMTRIC_KEY_SIZE=256
+    private String IV_str;//IV=00010203040506070809101112131415
+    private String IVSize_str;//IV_SIZE=16
+    private String Integrity_str;//INTEGRITY=H
+    private String Hash_algorithm_str;//H=SHA256
+    private String MAC_algorithm_str;//MAC=HMACSHA3-512
+    private String MacKey_str;//MACKEY=a0c4f12e70e4efba9c7c8de8c31533f3e14ed1c4b2c1fffd5d9e775f5a0d3031
+    private String MacKeySize_str;//MACKEY_SIZE=256
+
 
 
 
@@ -52,14 +56,15 @@ public class CryptoConfig implements Serializable {
 
         this.ciphersuite_str = prop.getProperty("CONFIDENTIALIY");
         this.symetricKey_str = prop.getProperty("SYMMETRIC_KEY");
+        this.symetricKeySize_str = prop.getProperty("SYMMTRIC_KEY_SIZE");
         this.IV_str = prop.getProperty("IV");
+        this.IVSize_str = prop.getProperty("IV_SIZE");
         this.Integrity_str = prop.getProperty("INTEGRITY");
         this.Hash_algorithm_str = prop.getProperty("H");
         this.MAC_algorithm_str = prop.getProperty("MAC");
         this.MacKey_str = prop.getProperty("MACKEY");
-
-
-        this.ciphersuite = prop.getProperty("CONFIDENTIALIY");
+        this.MacKeySize_str = prop.getProperty("MACKEY_SIZE");
+        
 
         byte[] keybytes = new byte[prop.getProperty("SYMMETRIC_KEY").length() / 2];
 
@@ -96,15 +101,18 @@ public class CryptoConfig implements Serializable {
         }
     }
 
-    public CryptoConfig(String ciphersuite, String symetricKey, String IV, String Integrity, String Hash_algorithm, String MAC_algorithm, String MacKey) {
+    public CryptoConfig(String ciphersuite, String symetricKey, String symetricKeySize, String IV,String IVSize, String Integrity, String Hash_algorithm, String MAC_algorithm, String MacKey, String MacKeySize) {
 
         this.ciphersuite_str = ciphersuite;
         this.symetricKey_str = symetricKey;
+        this.symetricKeySize_str = symetricKeySize;
         this.IV_str = IV;
+        this.IVSize_str = IVSize;
         this.Integrity_str = Integrity;
         this.Hash_algorithm_str = Hash_algorithm;
         this.MAC_algorithm_str = MAC_algorithm;
         this.MacKey_str = MacKey;
+        this.MacKeySize_str = MacKeySize;
 
         this.ciphersuite = ciphersuite;
 
@@ -178,12 +186,15 @@ public class CryptoConfig implements Serializable {
             Properties props = new Properties();
             props.setProperty("CONFIDENTIALIY", ciphersuite_str);
             props.setProperty("SYMMETRIC_KEY", symetricKey_str);
+            props.setProperty("SYMMTRIC_KEY_SIZE", symetricKeySize_str);
             props.setProperty("IV", IV_str);
+            props.setProperty("IV_SIZE", IVSize_str);
             props.setProperty("INTEGRITY", Integrity_str);
             props.setProperty("H", Hash_algorithm_str);
             props.setProperty("MAC", MAC_algorithm_str);
             props.setProperty("MACKEY", MacKey_str);
-    
+            props.setProperty("MACKEY_SIZE", MacKeySize_str);
+
             // Serialize the Properties object to a byte array
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             props.store(bos, null);
@@ -206,11 +217,14 @@ public static CryptoConfig fromByteArray(byte[] bytes) {
         return new CryptoConfig(
             props.getProperty("CONFIDENTIALIY"),
             props.getProperty("SYMMETRIC_KEY"),
+            props.getProperty("SYMMTRIC_KEY_SIZE"),
             props.getProperty("IV"),
+            props.getProperty("IV_SIZE"),
             props.getProperty("INTEGRITY"),
             props.getProperty("H"),
             props.getProperty("MAC"),
-            props.getProperty("MACKEY")
+            props.getProperty("MACKEY"),
+            props.getProperty("MACKEY_SIZE")
         );
     } catch (IOException e) {
         e.printStackTrace();

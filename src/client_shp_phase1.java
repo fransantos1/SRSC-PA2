@@ -105,7 +105,7 @@ public class client_shp_phase1 {
         CryptoConfig cryptoConfig;
 
 
-
+        //! GENERATE iterationCount with NONCE 1 or 2
 	   
         int iterationCount = 2048; 
 
@@ -259,8 +259,6 @@ public class client_shp_phase1 {
                         break;
                     }
 
-                    // HASH
-
                     hMac.update(decrypted, 0,decrypted.length);
                     byte[] newHash = hMac.doFinal();
                     if(!MessageDigest.isEqual(newHash, hashBody)){
@@ -270,18 +268,16 @@ public class client_shp_phase1 {
                    
 
                     //-------------------------------------------- SEND MESSAGE 5 ---------------------------------------------------------//
+                    ArrayList<byte[]> fullBodyArrayList = new ArrayList<>();
 
-                    ArrayList<byte[]> newarrayBody = new ArrayList<>();                    
+
+                    ArrayList<byte[]> encryptedBodyArrayList = new ArrayList<>();                    
                     byte[] part1 = "GO".getBytes();
                     byte[] part2 = new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray();;
-                    newarrayBody.add(part1);
-                    newarrayBody.add(part2);
+                    encryptedBodyArrayList.add(part1);
+                    encryptedBodyArrayList.add(part2);
+                    byte[] fullbody = concenateByteArr(encryptedBodyArrayList);
 
-                    byte[] fullbody = new byte[part1.length + part2.length];
-                    System.arraycopy(part1, 0, fullbody, 0, part1.length);
-                    System.arraycopy(part2, 0, fullbody, part1.length, part2.length);
-
-                    fullbody = concenateByteArr(newarrayBody);
                     System.out.println("-----------------------------------------------------------------------");
                     System.out.println("Full Body: " + Utils.toHex(fullbody));
                     System.out.println("Full Body Length: " + fullbody.length);
@@ -294,27 +290,24 @@ public class client_shp_phase1 {
                         cipher.init(Cipher.ENCRYPT_MODE, cryptoConfig.getKey());
                     }
                     byte[] encrypted = cipher.doFinal(fullbody);
+                    fullBodyArrayList.add(encrypted);
 
-
-                    msg = encrypted;
-
-
-
-
-
-
-
-
-/*
-                    byte[] integrity;
-                    if(cryptoConfig.getDigestType() == cryptoConfig.HMAC){  
+                    byte[] sendHash;
+                    
+                    if(cryptoConfig.getDigestType() == cryptoConfig.HASH ){
+                        MessageDigest messageDigest = cryptoConfig.getHash();
+                        sendHash = new byte[messageDigest.getDigestLength()];
+                        messageDigest.update(fullbody); // UNCRYPTED BODY BECAUSE ITS A HASH AND NOT A HMAC
+                        sendHash = messageDigest.digest();
                     }else{
+                        hMac.init(cryptoConfig.getHMacKey());
+                        sendHash = new byte[hMac.getMacLength()];
+                        hMac.update(encrypted);
+                        sendHash = hMac.doFinal();
+                        System.out.println("HMAC: " + Utils.toHex(sendHash));
                     }
-
-                    ArrayList<byte[]> message5 = new ArrayList<>();
- */
-
- 
+                    fullBodyArrayList.add(sendHash);
+                    msg = concenateByteArr(fullBodyArrayList);
                     type = 5;
                     break;
             }

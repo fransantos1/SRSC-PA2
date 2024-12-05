@@ -129,7 +129,6 @@ public class DSTP {
             hMacKey = new SecretKeySpec(macKeyBytes, prop.getProperty("MAC"));
             System.out.println("hmacKey: "+ hMacKey);
             System.out.println("hMac: "+ hMac);
-
         }
 
 

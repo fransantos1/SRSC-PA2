@@ -130,11 +130,11 @@ public class server_shp_phase1 {
         
         while(true){
             SHPPacket inpacket = recievePacket(dataIn);
-            System.out.println("Recieved Message: "+ Utils.toHex(inpacket.getMsg()));
+
             switch(inpacket.getMsgType()){
                 case 1:
                     //-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//3
-
+                    
                     String userID = new String(inpacket.getMsg());
                     System.out.println("Recieved usrID: "+ userID);
                     System.out.println("Getting full account");
@@ -301,7 +301,23 @@ public class server_shp_phase1 {
                 case 5:
                     //-------------------------------------------- RECIEVE MESSAGE 5 ----------------------------------------------------------//
                     System.out.println("//-------------------------------------------- RECIEVED MESSAGE 5 ----------------------------------------------------------//");
-                    byte[] encrypted = inpacket.getMsg();
+                    ArrayList<byte[]> bodyArr5 = separateByteArr(inpacket.getMsg());
+                    byte[] encrypted = bodyArr5.get(0);
+                    byte[] inhash = bodyArr5.get(1);
+
+
+                    if(cryptoConfig.getDigestType() == cryptoConfig.HMAC){
+                        hMac.init(cryptoConfig.getHMacKey());
+                        newHash = new byte[hMac.getMacLength()];
+                        hMac.update(encrypted);
+                        newHash = hMac.doFinal();
+                        if(!MessageDigest.isEqual(newHash, inhash)){
+                            System.out.println("Incorrect HASH");
+                            isErr = true;
+                            break;
+                        }
+                    }
+
                     cipher = Cipher.getInstance(cryptoConfig.getCiphersuite());
                     if (cryptoConfig.getIvSpec() != null) {
                         cipher.init(Cipher.DECRYPT_MODE, cryptoConfig.getKey(), cryptoConfig.getIvSpec());
@@ -328,12 +344,24 @@ public class server_shp_phase1 {
                     System.out.println("Nonce :" + Utils.toHex(decryptedBody.get(1)));
                     System.out.println(Arrays.equals(decryptedBody.get(1),  new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray()));
                     System.out.println("-----------------------------------------------------------------------");
-                    
+                
+                    if(!Arrays.equals(decryptedBody.get(1),  new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray())){
+                        System.out.println("Nonce 5 is not correct");
+                        isErr = true;
+                        break;
+                    }
 
-
-                    
-
-
+                    if(cryptoConfig.getDigestType() == cryptoConfig.HASH ){
+                        MessageDigest messageDigest = cryptoConfig.getHash();
+                        newHash = new byte[messageDigest.getDigestLength()];
+                        messageDigest.update(extratedBody); // UNCRYPTED BODY BECAUSE ITS A HASH AND NOT A HMAC
+                        newHash = messageDigest.digest();
+                        if(!MessageDigest.isEqual(newHash, inhash)){
+                            System.out.println("Incorrect HASH");
+                            isErr = true;
+                            break;
+                        }
+                    }
 
                     type = 5;
                     break;
