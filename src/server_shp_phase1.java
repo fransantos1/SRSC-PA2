@@ -33,9 +33,11 @@ import javax.crypto.spec.SecretKeySpec;
 
 import DataBase.*;
 
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.math.BigInteger;
 import java.io.FileInputStream;
@@ -44,7 +46,18 @@ import java.util.Properties;
 
 
 
+/*
+Streaming Service:
+    needs:
 
+    returns:
+        movie: the requested movie
+        udp_port: the udp_port where the client will receive the movie for real-time playing
+
+TFTP Service:
+    tcp_port: the tcp port where the server is waiting to execute the SHP protocol
+    
+*/
 
 
 
@@ -62,7 +75,7 @@ public class server_shp_phase1 {
 
 
 
-      public void server() throws Exception{
+      public String[] server() throws Exception{
 
         Properties properties = new Properties();
         FileInputStream fis = new FileInputStream(path+"ServerECCKeyPair.sec");
@@ -72,9 +85,9 @@ public class server_shp_phase1 {
 
         // LOADING CRYPTO CONFIG
 
-
-        CryptoConfig cryptoConfig = new CryptoConfig("cryptoconfig.txt");
-
+        CryptoConfig cryptoConfig = new CryptoConfig(path+"ciphersuite.conf");
+        System.out.println(cryptoConfig.getCiphersuite());
+        System.out.println(cryptoConfig.getDigestType());
 
         String privateKeyBase641 = properties.getProperty("PrivateKey");
         String publicKeyBase641 = properties.getProperty("PublicKey");
@@ -126,7 +139,7 @@ public class server_shp_phase1 {
         byte[] msg = null;
         boolean isErr = false;
         PublicKey clientPubKey = null;
-
+        String[] request = null;
         
         while(true){
             SHPPacket inpacket = recievePacket(dataIn);
@@ -134,25 +147,22 @@ public class server_shp_phase1 {
             switch(inpacket.getMsgType()){
                 case 1:
                     //-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//3
-                    
+
                     String userID = new String(inpacket.getMsg());
                     System.out.println("Recieved usrID: "+ userID);
                     System.out.println("Getting full account");
                     user = DB.getUser(userID);
-                    String base64String = user.getKpubClient().replaceAll("\\s", ""); // Removes any spaces or newlines
+                    String base64String = user.getKpubClient().replaceAll("\\s", "");
                     byte[] client_keybytes = Base64.getDecoder().decode(base64String);
                     X509EncodedKeySpec client_keySPEC = new X509EncodedKeySpec(client_keybytes);
                     clientPubKey = keyFactory.generatePublic(client_keySPEC);
-
-
-                    byte[] pwd_byteArr = Base64.getDecoder().decode(user.getPwd());
+                    byte[] pwd_byteArr = hexStringToByteArray(user.getPwd());
+                    
                     hMacKey = new SecretKeySpec(pwd_byteArr, "HMacSHA256");
                     hMac.init(hMacKey);
                     
-                    System.out.println("full User: "+ user.toString());
-
                     //-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//
-        
+                
                     msg = new byte[16*3];
                     for(int i = 0; i < 3; i++){
                         byte[] nonce = new byte[16];
@@ -173,6 +183,30 @@ public class server_shp_phase1 {
                     // Verifying Hash
                     // first thing because is the fastest
 
+             
+                    byte[] PBE = bodyArr.get(0);
+                    user = new User(user.getId(), user.getPwd(), Utils.toHex(nonces.get(0)), user.getKpubClient());
+                    DB.updateUser(user);
+
+                    char[] password = user.getPwd().toCharArray();
+                    byte[] salt = hexStringToByteArray(user.getSalt());
+                    PBEKeySpec pbeSpec = new PBEKeySpec(password);
+                    SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
+                    Key sKey= keyFact.generateSecret(pbeSpec);
+                    Cipher cDec = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
+                    int iteration = nonces.get(1)[1] & 0xFF;;
+
+
+                    cDec.init(Cipher.DECRYPT_MODE, sKey, new PBEParameterSpec(salt, iteration));
+                    byte[] inBytes = null;
+                    try{
+                        inBytes = cDec.doFinal(PBE);
+                    }catch(Exception e){
+                        type = -1;
+                        msg = "Wrong Password".getBytes();
+                        isErr = true;
+                        break;  
+                    }
                     hMac.update(concenateByteArr(bodyArr), 0, concenateByteArr(bodyArr).length);
                     byte[] newHash = hMac.doFinal();
                     if(!MessageDigest.isEqual(newHash, hash)){
@@ -181,24 +215,28 @@ public class server_shp_phase1 {
                         break;
                     }
 
-                    // Decrypting Body
-                    byte[] PBE = bodyArr.get(0);
 
-
-                    char[] password = user.getPwd().toCharArray();
-                    byte[] salt = hexStringToByteArray(user.getSalt());
-                    PBEKeySpec pbeSpec = new PBEKeySpec(password);
-                    SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
-                    Key sKey= keyFact.generateSecret(pbeSpec);
-                    Cipher cDec = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
-                         
-                    cDec.init(Cipher.DECRYPT_MODE, sKey, new PBEParameterSpec(salt, iterationCount));
-
-                    byte[] inBytes = cDec.doFinal(PBE);
                     ArrayList<byte[]> inPBEArrayList = separateByteArr(inBytes);
 
                     // Request
-                    String request = new String(inPBEArrayList.get(0));
+                    ;
+
+                    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(inPBEArrayList.get(0));
+                    ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream);
+                    request=(String[]) objectInputStream.readObject();
+                    objectInputStream.close();
+                    byteArrayInputStream.close();
+
+
+                    String[] newRequest = new String[request.length + 1];
+
+                    // Copy the existing elements to the new array
+                    System.arraycopy(request, 0, newRequest, 0, request.length);
+                
+                    // Add the new string to the new array
+                    String newString = Utils.toString(inPBEArrayList.get(4)); // Replace with the actual string you want to add
+                    newRequest[request.length] = newString;
+                    request = newRequest;
 
                     //Validate UserId
                     String userid = new String(inPBEArrayList.get(1));
@@ -221,10 +259,6 @@ public class server_shp_phase1 {
                     byte[] nonce4 = inPBEArrayList.get(3);
                     nonces.add(nonce4);
 
-                    // client UDP_port
-                    int inUDP_port = Integer.parseInt(Utils.toString(inPBEArrayList.get(4)));
-
-
                     byte[] sig = bodyArr.get(1);
 
                     signature.initVerify(clientPubKey);
@@ -236,13 +270,11 @@ public class server_shp_phase1 {
                     else
                     {
                         System.out.println("Assinatura nao reconhecida");
+                        isErr = true;
                     }
                     
                     
-                
                     //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
-
-
                     // Encrypted body
                     ArrayList<byte[]> fullBodyArray = new ArrayList<>();
 
@@ -317,7 +349,7 @@ public class server_shp_phase1 {
                             break;
                         }
                     }
-
+                    System.out.println("meow: "+cryptoConfig.getCiphersuite());
                     cipher = Cipher.getInstance(cryptoConfig.getCiphersuite());
                     if (cryptoConfig.getIvSpec() != null) {
                         cipher.init(Cipher.DECRYPT_MODE, cryptoConfig.getKey(), cryptoConfig.getIvSpec());
@@ -326,24 +358,14 @@ public class server_shp_phase1 {
                     }
 
 
-
                     byte[] extratedBody =new byte[cipher.getOutputSize(encrypted.length)];
-                    System.out.println("predicted size: " + cipher.getOutputSize(encrypted.length));
 
 
                     int ptLen = cipher.update(encrypted,0, encrypted.length, extratedBody,0);
                     cipher.doFinal(extratedBody, ptLen);
 
                     ArrayList<byte[]> decryptedBody = separateByteArr(extratedBody);
-                    
-                    System.out.println("-----------------------------------------------------------------------");
-                    System.out.println("Decrypted: " + Utils.toHex(extratedBody));
-                    System.out.println("Decrypted Length: " + extratedBody.length);
-                    System.out.println("Array size: " + decryptedBody.size());
-                    System.out.println("GO part: " + new String(decryptedBody.get(0)));
-                    System.out.println("Nonce :" + Utils.toHex(decryptedBody.get(1)));
-                    System.out.println(Arrays.equals(decryptedBody.get(1),  new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray()));
-                    System.out.println("-----------------------------------------------------------------------");
+
                 
                     if(!Arrays.equals(decryptedBody.get(1),  new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray())){
                         System.out.println("Nonce 5 is not correct");
@@ -366,22 +388,24 @@ public class server_shp_phase1 {
                     type = 5;
                     break;
             }
-            if(isErr){
-                System.out.println("Error");
-                break;
-            }
+          
             if(type == 5)
                 break;
             if(msg == null)
                 break;
             SHPPacket outpacket = new SHPPacket(ver, release, type, msg);
             sendPacket(dataOut, outpacket);
+            if(isErr){
+                System.out.println("Error");
+                break;
+            }
   
         }
         dataIn.close();
         dataOut.close();
         serverSocket.close();
         clientSocket.close();
+        return request;
     }
 
 

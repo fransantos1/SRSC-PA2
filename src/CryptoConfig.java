@@ -65,6 +65,7 @@ public class CryptoConfig implements Serializable {
         this.MacKey_str = prop.getProperty("MACKEY");
         this.MacKeySize_str = prop.getProperty("MACKEY_SIZE");
         
+        this.ciphersuite = prop.getProperty("CONFIDENTIALIY");
 
         byte[] keybytes = new byte[prop.getProperty("SYMMETRIC_KEY").length() / 2];
 

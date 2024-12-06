@@ -31,11 +31,42 @@ import javax.crypto.spec.SecretKeySpec;
 
 import DataBase.User;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.math.BigInteger;
+
+
+
+
+
+/*
+Common params:
+    server: the server host machine (DNS name) or IP address
+    username: username as registered in the user database, server side
+    password: user password
+    tcp_port: the tcp port where the server is waiting to execute the SHP protocol
+
+
+Streaming Service params:
+    
+    movie: the requested movie
+    udp_port: the udp_port where the client will receive the movie for real-time playing
+    player_port: the udp_port of the player that will play the streamed movie
+
+TFTP Service params:
+    type_r_w 
+    filename 
+    mode
+
+
+
+ */
 
 
 
@@ -45,14 +76,33 @@ public class client_shp_phase1 {
     private static byte[] delimiter = {0x00, 0x1E, 0x52, 0x00};
     private final String  path = "./Client/";
 
+
+
+
+
     public client_shp_phase1(){
+
     }
 
     //! change nonce 
     //! nonces cant be repeated so change the
 
-    public void client() throws Exception{
-        User client = new User("alice@gmail.com", "24c1f255e20fbe37e8a7f7090c8d1c2923c39e2a9bc21146f876e174cb6d41ec", "4f1b78329c106679a3dbec3cd9d97b0b", null);
+    public void client(String inusername, String inpwd, int server_tcp_port, int my_udp_port,String serverIp, String[] params) throws Exception{
+
+
+
+     
+
+
+        
+        MessageDigest tDigest = MessageDigest.getInstance("SHA-256");
+        tDigest.update(inpwd.getBytes());
+        
+        // USER INFORMATION
+        String username = inusername;
+        byte[] pwd = tDigest.digest();
+        byte[] salt;
+
 
 
         Properties client_properties = new Properties();
@@ -94,26 +144,23 @@ public class client_shp_phase1 {
 
         //---------------------------------------------------------------------- SECURE KEYHASHING ------------------------------------------------//
 
-        byte[] pwd_byteArr = Base64.getDecoder().decode(client.getPwd());
         Mac hMac = Mac.getInstance("HMacSHA256");
-        Key hMacKey = new SecretKeySpec(pwd_byteArr, "HMacSHA256");
+        Key hMacKey = new SecretKeySpec(pwd, "HMacSHA256");
+        System.out.println("password: "+Utils.toHex(pwd));
+        System.out.println("hMacKey: "+Utils.toHex(hMacKey.getEncoded()));
+
 
 
         Cipher cipher;
 
-
+        
         CryptoConfig cryptoConfig;
 
-
-        //! GENERATE iterationCount with NONCE 1 or 2
 	   
-        int iterationCount = 2048; 
-
-
-        int udp_port = 5001;
+        int iterationCount; 
 
         Socket socket = new Socket();
-        socket.connect(new InetSocketAddress("127.0.0.1", udp_port), 1000);
+        socket.connect(new InetSocketAddress(serverIp, server_tcp_port), 1000);
         System.out.println("Connection Successful!");
         DataInputStream dataIn = new DataInputStream(socket.getInputStream());
         DataOutputStream dataOut = new DataOutputStream(socket.getOutputStream());
@@ -121,15 +168,14 @@ public class client_shp_phase1 {
 
         //-------------------------------------------- SEND MESSAGE 1 ---------------------------------------------------------//
         int type = 1;
-        byte[] msg = client.getId().getBytes();
+        byte[] msg = username.getBytes();
         ArrayList<byte[]> nonces = new ArrayList<>();
 
+        boolean finish = false;
         
         while(true){
             
 
-
-            System.out.println("Sending Message: "+ Utils.toHex(msg));
             SHPPacket outpacket = new SHPPacket(ver, release, type, msg);
             sendPacket(dataOut, outpacket);
             
@@ -148,43 +194,60 @@ public class client_shp_phase1 {
                         System.arraycopy(body, i * 16, nonce, 0, 16);
                         nonces.add(nonce);
                     }
+                    // nonce 1 is used to generate salt
+                    salt = nonces.get(0);
+
+                    // FIRST BYTE OF NONCE 2 IS ITERATION COUNT
+                    iterationCount = nonces.get(1)[1] & 0xFF;
+
 
                     //-------------------------------------------- SEND MESSAGE 3 ---------------------------------------------------------//
-                    
-                    
-                    ArrayList<byte[]> PBE_body = new ArrayList<>();
-                    //request
-                    byte[] request = "req2uest".getBytes();
-                    PBE_body.add(request);
-                    //userId
-                    byte[] usrid = client.getId().getBytes();
-                    PBE_body.add(usrid);
-                    //nonce3+1
-                    byte[] Nonce3 = nonces.get(2);
-                    byte[] nonce3_new = new BigInteger(Nonce3).add(BigInteger.ONE).toByteArray();
-                    PBE_body.add(nonce3_new);
 
-                    //nonce4    
-                    byte[] nonce4 = genNonce();
-                    nonces.add(nonce4);
-                    PBE_body.add(nonce4);
-                    //udpPort
-                    byte[] udpPortSend = Utils.toByteArray(String.valueOf(udp_port));
-                    PBE_body.add(udpPortSend);
-                    byte[] new_body = concenateByteArr(PBE_body);
 
-                    char[] password = client.getPwd().toCharArray();
-                    byte[] salt = hexStringToByteArray(client.getSalt());
- 
-                    ArrayList<byte[]> arrBody = new ArrayList<>();
-
-                    // Encryption 
-                    PBEKeySpec pbeSpec = new PBEKeySpec(password);
+                    //setup encryption
+                    PBEKeySpec pbeSpec = new PBEKeySpec(Utils.toHex(pwd).toCharArray());
                     SecretKeyFactory keyFact = SecretKeyFactory.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     Key sKey= keyFact.generateSecret(pbeSpec);
                     Cipher cEnc = Cipher.getInstance("PBEWITHSHA256AND192BITAES-CBC-BC","BC");
                     cEnc.init(Cipher.ENCRYPT_MODE, sKey, new PBEParameterSpec(salt, iterationCount));
+
+
+                    // PASSWORD BASED ENCRYPTION BODY
+                    ArrayList<byte[]> PBE_body = new ArrayList<>();
+
+                    //REQUEST
+                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                    ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream);
+                    objectOutputStream.writeObject(params);
+                    objectOutputStream.flush();
+                    byte[] request = byteArrayOutputStream.toByteArray();
+                    PBE_body.add(request);
+
+                        // MY USER ID/USERNAME
+                    byte[] usrid = username.getBytes();
+                    PBE_body.add(usrid);
+
+                        // NONCE 3 + 1 
+                    byte[] nonce3_new = new BigInteger(nonces.get(2)).add(BigInteger.ONE).toByteArray();
+                    PBE_body.add(nonce3_new);
+
+                        // CREATE A NONCE 4 FOR SERVER
+                    nonces.add(genNonce());
+                    PBE_body.add(nonces.get(3));
+
+                        // SEND MY UDP PORT
+                    byte[] udpPortSend = Utils.toByteArray(String.valueOf(my_udp_port));
+                    PBE_body.add(udpPortSend);
+
+                        // CREATE MY BODY BYTE ARRAY
+                    byte[] new_body = concenateByteArr(PBE_body);
+                    
+
+                    // FULL BODY
+                    ArrayList<byte[]> arrBody = new ArrayList<>();
+
                 
+                    
                     byte[] PBE = cEnc.doFinal(new_body);
                     arrBody.add(PBE);
 
@@ -241,7 +304,7 @@ public class client_shp_phase1 {
                     byte[] signedbody;
                     ArrayList<byte[]> body2ArrayList = new ArrayList<>();
                     body2ArrayList.add(decBody.get(0));
-                    byte[] userId = client.getId().getBytes();
+                    byte[] userId = username.getBytes();
                     body2ArrayList.add(userId);
                     body2ArrayList.add(decBody.get(1));
                     body2ArrayList.add(decBody.get(2));
@@ -310,7 +373,17 @@ public class client_shp_phase1 {
                     msg = concenateByteArr(fullBodyArrayList);
                     type = 5;
                     break;
+                
+                case 255:
+                    finish = true;
+                    System.out.println(new String(inpacket.getMsg()));
+                    break;
             }
+            if(finish){
+                break;
+            }
+            
+            
             
         }
        
