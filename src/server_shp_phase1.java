@@ -146,7 +146,8 @@ public class server_shp_phase1 {
 
             switch(inpacket.getMsgType()){
                 case 1:
-                    //-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//3
+                System.out.println("//-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//");
+                    //-------------------------------------------- RECIEVE MESSAGE 1 ----------------------------------------------------------//
 
                     String userID = new String(inpacket.getMsg());
                     System.out.println("Recieved usrID: "+ userID);
@@ -160,7 +161,7 @@ public class server_shp_phase1 {
                     
                     hMacKey = new SecretKeySpec(pwd_byteArr, "HMacSHA256");
                     hMac.init(hMacKey);
-                    
+                    System.out.println("//-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//");
                     //-------------------------------------------- SEND MESSAGE 2 -------------------------------------------------------------//
                 
                     msg = new byte[16*3];
@@ -173,6 +174,7 @@ public class server_shp_phase1 {
                     type = 2;
                     break;
                 case 3:
+                System.out.println("//-------------------------------------------- RECIEVE MESSAGE 3 ----------------------------------------------------------//");
                     //-------------------------------------------- RECIEVE MESSAGE 3 ----------------------------------------------------------//
                     
                     ArrayList<byte[]> bodyArr = separateByteArr(inpacket.getMsg());
@@ -273,7 +275,7 @@ public class server_shp_phase1 {
                         isErr = true;
                     }
                     
-                    
+                    System.out.println("//-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//");
                     //-------------------------------------------- SEND MESSAGE 4 -------------------------------------------------------------//
                     // Encrypted body
                     ArrayList<byte[]> fullBodyArray = new ArrayList<>();
@@ -421,7 +423,6 @@ public class server_shp_phase1 {
         byte[] inpacket = new byte[in.readInt()];
         in.read(inpacket);
         SHPPacket packet = SHPPacket.fromByteArray(inpacket);
-        System.out.println(packet.toString());
         return packet;
     }
 
@@ -480,7 +481,6 @@ public class server_shp_phase1 {
         ArrayList<byte[]> list = new ArrayList<>();
         int copyIndex = 0;
         int delIndex = 0;
-        System.out.println(bytesToHex(arr));
         for(int i = 0; i < arr.length; i++){
             if(arr[i] != delimiter[delIndex]){
                 delIndex = 0;

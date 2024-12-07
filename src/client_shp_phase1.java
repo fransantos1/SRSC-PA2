@@ -1,6 +1,5 @@
 
 import java.net.*;
-import java.nio.ByteBuffer;
 import java.security.Key;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -8,36 +7,28 @@ import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
-import java.security.SecureRandomSpi;
-import java.security.Security;
 import java.security.Signature;
-import java.security.spec.ECGenParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.List;
 import java.util.Properties;
 
 import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
-import javax.crypto.SecretKeyFactory;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import DataBase.User;
-
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 
@@ -77,23 +68,18 @@ public class client_shp_phase1 {
     private final String  path = "./Client/";
 
 
+    public client_shp_phase1(){}
+
+    public CryptoConfig client(String inusername, String inpwd, int server_tcp_port, int my_udp_port,String serverIp, String[] params) throws Exception{
 
 
 
-    public client_shp_phase1(){
+         KeyGenerator keyGen = KeyGenerator.getInstance("RC4");
+            keyGen.init(168, new SecureRandom()); // 168-bit key
 
-    }
-
-    //! change nonce 
-    //! nonces cant be repeated so change the
-
-    public void client(String inusername, String inpwd, int server_tcp_port, int my_udp_port,String serverIp, String[] params) throws Exception{
-
-
-
-     
-
-
+            // Generate the secret key
+            SecretKey secretKey = keyGen.generateKey();
+            System.out.println("Secret key: " + Utils.toHex(secretKey.getEncoded()));
         
         MessageDigest tDigest = MessageDigest.getInstance("SHA-256");
         tDigest.update(inpwd.getBytes());
@@ -154,7 +140,7 @@ public class client_shp_phase1 {
         Cipher cipher;
 
         
-        CryptoConfig cryptoConfig;
+        CryptoConfig cryptoConfig = null;
 
 	   
         int iterationCount; 
@@ -165,7 +151,7 @@ public class client_shp_phase1 {
         DataInputStream dataIn = new DataInputStream(socket.getInputStream());
         DataOutputStream dataOut = new DataOutputStream(socket.getOutputStream());
 
-
+        System.out.println("//-------------------------------------------- SEND MESSAGE 1 ---------------------------------------------------------//");
         //-------------------------------------------- SEND MESSAGE 1 ---------------------------------------------------------//
         int type = 1;
         byte[] msg = username.getBytes();
@@ -186,6 +172,7 @@ public class client_shp_phase1 {
             SHPPacket inpacket = recievePacket(dataIn);
             switch(inpacket.getMsgType()){
                 case 2:
+                System.out.println("//-------------------------------------------- RECIEVE MESSAGE 2 ------------------------------------------------------//");
                     //-------------------------------------------- RECIEVE MESSAGE 2 ------------------------------------------------------//
 
                     byte[] body = inpacket.getMsg();
@@ -199,7 +186,7 @@ public class client_shp_phase1 {
 
                     // FIRST BYTE OF NONCE 2 IS ITERATION COUNT
                     iterationCount = nonces.get(1)[1] & 0xFF;
-
+                    System.out.println("//-------------------------------------------- SEND MESSAGE 3 ---------------------------------------------------------//");
 
                     //-------------------------------------------- SEND MESSAGE 3 ---------------------------------------------------------//
 
@@ -269,7 +256,7 @@ public class client_shp_phase1 {
                     break;
 
                 case 4:
-
+                    System.out.println("//-------------------------------------------- RECIEVE MESSAGE 4 ------------------------------------------------------//");
                     //-------------------------------------------- RECIEVE MESSAGE 4 ------------------------------------------------------//
 
                     ArrayList<byte[]> arrayBody = separateByteArr(inpacket.getMsg());
@@ -297,7 +284,7 @@ public class client_shp_phase1 {
                     nonces.add(decBody.get(2));
 
                     cryptoConfig = CryptoConfig.fromByteArray(decBody.get(3));
-
+                    //cryptoConfig.writeConfigs("./Client/cryptoConfig.txt");
                    
 
                     // SIGNATURE
@@ -329,7 +316,7 @@ public class client_shp_phase1 {
                         //break;
                     }
                    
-
+                    System.out.println("//-------------------------------------------- SEND MESSAGE 5 ---------------------------------------------------------//");
                     //-------------------------------------------- SEND MESSAGE 5 ---------------------------------------------------------//
                     ArrayList<byte[]> fullBodyArrayList = new ArrayList<>();
 
@@ -341,10 +328,7 @@ public class client_shp_phase1 {
                     encryptedBodyArrayList.add(part2);
                     byte[] fullbody = concenateByteArr(encryptedBodyArrayList);
 
-                    System.out.println("-----------------------------------------------------------------------");
-                    System.out.println("Full Body: " + Utils.toHex(fullbody));
-                    System.out.println("Full Body Length: " + fullbody.length);
-                    System.out.println("-----------------------------------------------------------------------");
+         
 
                     cipher = Cipher.getInstance(cryptoConfig.getCiphersuite());
                     if (cryptoConfig.getIvSpec() != null) {
@@ -382,14 +366,13 @@ public class client_shp_phase1 {
             if(finish){
                 break;
             }
-            
-            
-            
+               
         }
-       
         dataIn.close();
         dataOut.close();
         socket.close();
+        return cryptoConfig;
+        
     }
     private void sendPacket(DataOutputStream out,SHPPacket packet) throws IOException{
         byte[] outpacket = packet.toByteArray();
