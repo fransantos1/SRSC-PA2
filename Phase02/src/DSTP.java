@@ -7,6 +7,7 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 
+import Common.*;
 
 /*
     CONFIDENTIALIY: ALG/MODE/PADDING
@@ -44,9 +45,7 @@ public class DSTP {
         key = config.getKey();
         ivSpec = config.getIvSpec();
 
-        //! GCM 
-        //! tem que se criar um iv novo para cada 
-        //! SHASHA precisam de coisas adicionais
+        System.out.println(config.toString());
         
         
         if (config.getDigestType() == config.HASH) {
@@ -56,8 +55,6 @@ public class DSTP {
         }else{
             hMac = config.getHMac();
             hMacKey =config.getHMacKey();
-            System.out.println("hmacKey: "+ hMacKey);
-            System.out.println("hMac: "+ hMac);
         }
 
     }

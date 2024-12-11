@@ -11,25 +11,28 @@ import java.net.*;
 class hjStreamServer {
 
 	static public void main( String []args ) throws Exception {
-	        if (args.length != 3)
-	        {
-	         System.out.println("Use: hjStramSrver <movie> <ip-multicast-address> <port>");
-	         System.out.println(" or: hjStreamSrver  <movie> <ip-unicast-address> <port>");
-	         System.exit(-1);
-	         }
-      
+		String new_rgs[] = server_shp_phase1.server(5001);
+		System.out.println("all args: "+new_rgs[0]+" "+new_rgs[1]+" "+new_rgs[2]);
+
+		// args[0] = destination IP
+		// args[2] = destination port
+		// args[1] = file name
+		
 		int size;
 		int count = 0;
  		long time;
-		DataInputStream g = new DataInputStream( new FileInputStream(args[0]) );
+		DataInputStream g = new DataInputStream( new FileInputStream("./movies/"+new_rgs[2]) );
 		byte[] buff = new byte[65000];
 		DatagramSocket s = new DatagramSocket();
 		InetSocketAddress addr =
-		    new InetSocketAddress(args[1],Integer.parseInt(args[2]));
+		    new InetSocketAddress(new_rgs[0],Integer.parseInt(new_rgs[1]));
+
+		System.out.println("sending to "+addr);
 		DatagramPacket p=new DatagramPacket(buff,buff.length,addr);
 		long t0 = System.nanoTime(); // tempo de referencia
 		long q0 = 0;
-			DSTP.init();
+		System.out.println("waiting connection");
+		DSTP.init(new CryptoConfig("ciphersuite.conf"));
 		while ( g.available() > 0 ) {
 			size = g.readShort();
 			time = g.readLong();

@@ -1,35 +1,12 @@
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketTimeoutException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.Key;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.Security;
-import java.util.Base64;
-import java.util.Properties;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.Mac;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
-import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import javax.swing.JFileChooser;
-import javax.xml.crypto.Data;
+
 
 /*
     CONFIDENTIALIY: ALG/MODE/PADDING
@@ -44,9 +21,13 @@ import javax.xml.crypto.Data;
     MACKEY_SIZE: integer representing the size of the MACKEY in BITS
  */
 
-public class DSTP {
 
-    private final static String defaultPathToConfig = "./cryptoconfig.txt";
+
+
+
+
+
+public class DSTP {
 
     private static String ciphersuite = null;
     private static IvParameterSpec ivSpec = null;
@@ -58,89 +39,23 @@ public class DSTP {
     private static int sequenceNumber = 0;
 
 
-    public static void init() throws Exception {
-        Properties prop = new Properties();
-        try (FileInputStream fis = new FileInputStream(defaultPathToConfig)) {
-            System.out.println("Read Properties");
-             prop.load(fis);
-        } catch (FileNotFoundException ex) {
-            System.out.println(ex);
-        } catch (IOException ex) {
-            System.out.println(ex);
-        }
-        ciphersuite=prop.getProperty("CONFIDENTIALIY"); 
-        System.out.println("Confidentiality Read: "+ ciphersuite);
-        //! GCM 
-        //! tem que se criar um iv novo para cada 
-        //! SHASHA precisam de coisas adicionais
-        
-        //keyBytes = Base64.getDecoder().decode(prop.getProperty("SYMMETRIC_KEY"));
-        //ystem.out.println("SymetricKey Read: "+Utils.toString(keyBytes));
-        
+    public static void init(CryptoConfig config) throws Exception {
+        ciphersuite = config.getCiphersuite();
+        key = config.getKey();
+        ivSpec = config.getIvSpec();
 
-        String symetricKey = prop.getProperty("SYMMETRIC_KEY");
-        int keylen = Integer.parseInt(prop.getProperty("SYMMTRIC_KEY_SIZE"));
-        System.out.println("Key: "+symetricKey+" Size: "+ keylen);
-        keyBytes = new byte[keylen/8];
-        for (int i = 0; i < symetricKey.length(); i += 2) {
-            // Convert the pair of hex characters to a byte
-            keyBytes[i / 2] = (byte) (
-                (Character.digit(symetricKey.charAt(i), 16) << 4)  // First hex char
-                + Character.digit(symetricKey.charAt(i + 1), 16)   // Second hex char
-            );
-        }
-        System.out.println(" Size: "+ keyBytes.length);
-        
-        //key = keyBytes;
-        key = new SecretKeySpec(keyBytes, ciphersuite.split("/")[0]);
-        String ivHex = prop.getProperty("IV");
-        byte[] ivBytes = null;
-        if(!ivHex.equals("NULL")){
-            int len = Integer.parseInt(prop.getProperty("IV_SIZE"));
-            System.out.println("IV: "+ivHex+" Size: "+ len);
-            ivBytes = new byte[len];
-            for (int i = 0; i < len*2; i += 2) {
-                ivBytes[i / 2] = (byte) ((Character.digit(ivHex.charAt(i), 16) << 4)
-                                     + Character.digit(ivHex.charAt(i + 1), 16));
-            }
-            for (int i = 0; i < ivBytes.length; i++) {
-                System.out.printf("0x%02X", ivBytes[i]);
-                if (i < ivBytes.length - 1) {
-                    System.out.print(", ");
-                }
-            }
-            System.out.println(Utils.toHex(ivBytes));   
-        }
-        if(ivBytes != null)
-            ivSpec = new IvParameterSpec(ivBytes);
 
-        String integrity = prop.getProperty("INTEGRITY");
-        if (integrity.equals("H")) {
-            hash = MessageDigest.getInstance(prop.getProperty("H"));
+        
+        if (config.getDigestType() == config.HASH) {
+            hash = config.getHash();
             System.out.println("Using Hash: "+hash.getAlgorithm());
+
         }else{
-            hMac = Mac.getInstance(prop.getProperty("MAC"));
-            byte[] macKeyBytes = Base64.getDecoder().decode(prop.getProperty("MACKEY"));
-            hMacKey = new SecretKeySpec(macKeyBytes, prop.getProperty("MAC"));
+            hMac = config.getHMac();
+            hMacKey =config.getHMacKey();
             System.out.println("hmacKey: "+ hMacKey);
             System.out.println("hMac: "+ hMac);
-
         }
-            
-
-        /*
-            Mac hMac = Mac.getInstance("HMacSHA256");
-            Key hMacKey =new SecretKeySpec(key.getEncoded(), "HMacSHA256");
-        
-         */
-
-
-        
-
-
-
-
-
 
     }
 
@@ -234,7 +149,6 @@ public class DSTP {
 
     outPacket.setData(extractedMessageBytes, 0, extractedMessageBytes.length);
 }
-
 
 
 

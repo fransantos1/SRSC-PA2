@@ -3,10 +3,20 @@ import java.io.*;
 import java.util.*;
 
 public class TFTPServer {
+	public DSTP dstp;
 
 	public static void main(String argv[]) {
 		try {
-			DSTP.init();
+			if(argv.length != 0) {
+				System.out.println("Usage: java TFTPServer <tcp_port>");
+				System.exit(1);
+			}
+
+			server_shp_phase1 shp = new server_shp_phase1();
+			String arg[] = shp.server(Integer.parseInt(argv[0])); 
+			System.out.println(arg[0]);
+			System.out.println(arg[1]);
+			DSTP.init(new CryptoConfig("ciphersuit.conf"));
 		
 			//use port 6973
 			DatagramSocket sock = new DatagramSocket(6973);
@@ -15,8 +25,6 @@ public class TFTPServer {
 			// Listen for requests
 			while (true) {
 				TFTPpacket in = TFTPpacket.receive(sock);
-
-				
 				// receive read request
 				if (in instanceof TFTPread) {
 					System.out.println("Read Request from " + in.getAddress());
