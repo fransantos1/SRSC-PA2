@@ -415,9 +415,6 @@ public class server_shp_phase1 {
 
 
         cryptoConfig.SaveFile(path+"ciphersuite.conf");
-
-
-        Thread.sleep(1000);
         dataIn.close();
         dataOut.close();
         serverSocket.close();

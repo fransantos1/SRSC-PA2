@@ -317,13 +317,11 @@ public class server_shp_phase1 {
                     }
 
 
-                    byte[] extratedBody =new byte[cipher.getOutputSize(encrypted.length)];
+                    byte[] extratedBody = cipher.doFinal(encrypted);
 
-
-                    int ptLen = cipher.update(encrypted,0, encrypted.length, extratedBody,0);
-                    cipher.doFinal(extratedBody, ptLen);
 
                     ArrayList<byte[]> decryptedBody = separateByteArr(extratedBody);
+
 
                     if(!Arrays.equals(decryptedBody.get(1),  new BigInteger(nonces.get(4)).add(BigInteger.ONE).toByteArray())){
                         msg = "Nonce 5 is not correct".getBytes();

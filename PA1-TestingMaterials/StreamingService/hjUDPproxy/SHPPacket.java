@@ -1,3 +1,4 @@
+
 public class SHPPacket {
     private final int ver; // 4 bits max
     private final int release; // 4 bits max

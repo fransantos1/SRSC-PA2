@@ -1,3 +1,4 @@
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
@@ -17,16 +18,16 @@ public class CryptoConfig implements Serializable {
     public final int HMAC = 1;
 
 
-    private String ciphersuite_str ;//CONFIDENTIALIY=AES/CTR/NoPadding
-    private String symetricKey_str;//SYMMETRIC_KEY=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
-    private String symetricKeySize_str;//SYMMTRIC_KEY_SIZE=256
-    private String IV_str;//IV=00010203040506070809101112131415
-    private String IVSize_str;//IV_SIZE=16
-    private String Integrity_str;//INTEGRITY=H
-    private String Hash_algorithm_str;//H=SHA256
-    private String MAC_algorithm_str;//MAC=HMACSHA3-512
-    private String MacKey_str;//MACKEY=a0c4f12e70e4efba9c7c8de8c31533f3e14ed1c4b2c1fffd5d9e775f5a0d3031
-    private String MacKeySize_str;//MACKEY_SIZE=256
+    private String ciphersuite_str = null ;//CONFIDENTIALIY=AES/CTR/NoPadding
+    private String symetricKey_str = null;//SYMMETRIC_KEY=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF
+    private String symetricKeySize_str = null;//SYMMTRIC_KEY_SIZE=256
+    private String IV_str = null;//IV=00010203040506070809101112131415
+    private String IVSize_str = null;//IV_SIZE=16
+    private String Integrity_str = null;//INTEGRITY=H
+    private String Hash_algorithm_str = null;//H=SHA256
+    private String MAC_algorithm_str = null;//MAC=HMACSHA3-512
+    private String MacKey_str = null;//MACKEY=a0c4f12e70e4efba9c7c8de8c31533f3e14ed1c4b2c1fffd5d9e775f5a0d3031
+    private String MacKeySize_str = null;//MACKEY_SIZE=256
 
 
 
@@ -74,7 +75,9 @@ public class CryptoConfig implements Serializable {
             int j = Integer.parseInt(prop.getProperty("SYMMETRIC_KEY").substring(index, index + 2), 16);
             keybytes[i] = (byte) j;
         }
-        this.key = new SecretKeySpec(keybytes, prop.getProperty("SYMMETRIC_KEY").split("/")[0]);
+        System.out.println(prop.getProperty("SYMMETRIC_KEY"));
+        if(!prop.getProperty("SYMMETRIC_KEY").isEmpty())
+            this.key = new SecretKeySpec(keybytes, prop.getProperty("SYMMETRIC_KEY").split("/")[0]);
 
         if(!prop.getProperty("IV").equals("NULL")){
             byte[] ivBytes = new byte[prop.getProperty("IV").length()/2];
@@ -95,7 +98,8 @@ public class CryptoConfig implements Serializable {
                 digestType = HMAC;
                 hMac = Mac.getInstance(prop.getProperty("MAC"));
                 byte[] macKeyBytes = Base64.getDecoder().decode(prop.getProperty("MACKEY"));
-                hMacKey = new SecretKeySpec(macKeyBytes, prop.getProperty("MAC"));
+                if(macKeyBytes.length != 0)
+                    hMacKey = new SecretKeySpec(macKeyBytes, prop.getProperty("MAC"));
             }
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -124,7 +128,9 @@ public class CryptoConfig implements Serializable {
             int j = Integer.parseInt(symetricKey.substring(index, index + 2), 16);
             keybytes[i] = (byte) j;
         }
-        this.key = new SecretKeySpec(keybytes, symetricKey.split("/")[0]);
+
+        if(!symetricKey.isEmpty())
+            this.key = new SecretKeySpec(keybytes, symetricKey.split("/")[0]);
 
         if(!IV.equals("NULL")){
             byte[] ivBytes = new byte[IV.length()/2];
@@ -145,7 +151,8 @@ public class CryptoConfig implements Serializable {
                 digestType = HMAC;
                 hMac = Mac.getInstance(MAC_algorithm);
                 byte[] macKeyBytes = Base64.getDecoder().decode(MacKey);
-                hMacKey = new SecretKeySpec(macKeyBytes, MAC_algorithm);
+                if(macKeyBytes.length != 0)
+                    hMacKey = new SecretKeySpec(macKeyBytes, MAC_algorithm);
             }
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -153,6 +160,29 @@ public class CryptoConfig implements Serializable {
 
     }
 
+    public void updateConfig(){
+            CryptoConfig updatedConfig = new CryptoConfig(
+        this.ciphersuite_str,
+        this.symetricKey_str,
+        this.symetricKeySize_str,
+        this.IV_str,
+        this.IVSize_str,
+        this.Integrity_str,
+        this.Hash_algorithm_str,
+        this.MAC_algorithm_str,
+        this.MacKey_str,
+        this.MacKeySize_str
+    );
+
+    // Update the current instance with the new configuration
+    this.ciphersuite = updatedConfig.getCiphersuite();
+    this.ivSpec = updatedConfig.getIvSpec();
+    this.key = updatedConfig.getKey();
+    this.hash = updatedConfig.getHash();
+    this.hMac = updatedConfig.getHMac();
+    this.hMacKey = updatedConfig.getHMacKey();
+    this.digestType = updatedConfig.getDigestType();
+    }
 
  
     public String getCiphersuite() {
@@ -181,6 +211,60 @@ public class CryptoConfig implements Serializable {
     public int getDigestType(){
         return digestType;
     }
+
+    public void setKey(String symetricKey_str) {
+
+        this.symetricKey_str = symetricKey_str;
+    }
+    public void setIvSpec(String IV_str) {
+
+        this.IV_str = IV_str;
+    }
+
+    public void setHMacKey(String MacKey_str) {
+        this.MacKey_str = MacKey_str;
+    }
+    public String getCiphersuite_str() {
+        return ciphersuite_str;
+    }
+    
+    public String getSymetricKey_str() {
+        return symetricKey_str;
+    }
+    
+    public String getSymetricKeySize_str() {
+        return symetricKeySize_str;
+    }
+    
+    public String getIV_str() {
+        return IV_str;
+    }
+    
+    public String getIVSize_str() {
+        return IVSize_str;
+    }
+    
+    public String getIntegrity_str() {
+        return Integrity_str;
+    }
+    
+    public String getHash_algorithm_str() {
+        return Hash_algorithm_str;
+    }
+    
+    public String getMAC_algorithm_str() {
+        return MAC_algorithm_str;
+    }
+    
+    public String getMacKey_str() {
+        return MacKey_str;
+    }
+    
+    public String getMacKeySize_str() {
+        return MacKeySize_str;
+    }
+
+
     // Convert the object to a byte array
     public byte[] toByteArray() {
         try {
@@ -233,7 +317,41 @@ public static CryptoConfig fromByteArray(byte[] bytes) {
         return null;
     }
 }
+public void SaveFile(String path) {
+    Properties prop = new Properties();
+
+    // Set the properties from the CryptoConfig fields
+    prop.setProperty("CONFIDENTIALIY", this.ciphersuite_str);
+    prop.setProperty("SYMMETRIC_KEY", this.symetricKey_str);
+    prop.setProperty("SYMMTRIC_KEY_SIZE", this.symetricKeySize_str);
+    prop.setProperty("IV", this.IV_str);
+    prop.setProperty("IV_SIZE", this.IVSize_str);
+    prop.setProperty("INTEGRITY", this.Integrity_str);
+    prop.setProperty("H", this.Hash_algorithm_str);
+    prop.setProperty("MAC", this.MAC_algorithm_str);
+    prop.setProperty("MACKEY", this.MacKey_str);
+    prop.setProperty("MACKEY_SIZE", this.MacKeySize_str);
+
+    // Create the output file stream and save the properties
+    try (FileOutputStream fos = new FileOutputStream(path)) {
+        prop.store(fos, "CryptoConfig Properties");
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+}
 
 
-
+@Override
+public String toString(){ 
+    return "CONFIDENTIALIY: "+ciphersuite_str+"\n"+
+    "SYMMETRIC_KEY: "+symetricKey_str+"\n"+
+    "SYMMTRIC_KEY_SIZE: "+symetricKeySize_str+"\n"+
+    "IV_SIZE: "+IVSize_str+"\n"+
+    "IV: "+IV_str+"\n"+
+    "INTEGRITY: "+Integrity_str+"\n"+
+    "H: "+Hash_algorithm_str+"\n"+
+    "MAC: "+MAC_algorithm_str+"\n"+
+    "MACKEY: "+MacKey_str+"\n"+
+    "MACKEY_SIZE: "+MacKeySize_str;
+}
 }
