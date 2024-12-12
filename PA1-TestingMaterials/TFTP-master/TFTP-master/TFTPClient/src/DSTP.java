@@ -7,8 +7,6 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 
-import Common.*;
-
 /*
     CONFIDENTIALIY: ALG/MODE/PADDING
     SYMMETRIC_KEY: key in hexadecimal value with the required key size

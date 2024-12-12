@@ -1,4 +1,4 @@
-package Server;
+
 import java.net.*;
 import java.security.Key;
 import java.security.KeyFactory;
@@ -31,7 +31,7 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import Server.DataBase.*;
+import DataBase.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -41,11 +41,10 @@ import java.io.ObjectInputStream;
 import java.math.BigInteger;
 import java.io.FileInputStream;
 
-import Common.*;
 
 
 public class server_shp_phase1 {
-    private static final String  path = "./Server/";
+    private static final String  path = "./";
 
 
     private static int ver = 0;
@@ -417,7 +416,6 @@ public class server_shp_phase1 {
         cryptoConfig.SaveFile(path+"ciphersuite.conf");
 
 
-        Thread.sleep(1000);
         dataIn.close();
         dataOut.close();
         serverSocket.close();

@@ -86,6 +86,7 @@ public class DSTP {
     int extractedRelease = header[2] & 0xFF; // 8-bit release value
     int extractedPayloadLen = ((header[3] & 0xFF) << 8) | (header[4] & 0xFF); // Combine to get payload length
     System.out.println(extractedVersion);
+    System.out.println("Encrypted Payload Len: " + extractedPayloadLen);
 
 
 
@@ -95,12 +96,12 @@ public class DSTP {
         cipher.init(Cipher.DECRYPT_MODE, key);
     }
 
-
+    byte[] encryptedDSTPPayload =new byte[extractedPayloadLen];
+    System.arraycopy(fullPayLoad, 5, encryptedDSTPPayload, 0, extractedPayloadLen);
+    byte[] extractedDSTPPayload = cipher.doFinal(encryptedDSTPPayload);
     
-    byte[] extractedDSTPPayload =new byte[cipher.getOutputSize(extractedPayloadLen)];
-    int ptLength = 0;
-    ptLength=cipher.update(fullPayLoad,5, extractedPayloadLen, extractedDSTPPayload,0);
-    ptLength += cipher.doFinal(extractedDSTPPayload, ptLength);
+    int decryptedPayloadLen = extractedDSTPPayload.length;
+    System.out.println("Decrypted Payload Size: " +decryptedPayloadLen);
     //PAYLOAD
 
 
@@ -111,12 +112,13 @@ public class DSTP {
        hMac.init(hMacKey);
        hashSize =hMac.getMacLength();
    }
+   System.out.println("Hash Size: " + hashSize);
 
 
     int extractedSequenceNumber = ((extractedDSTPPayload[0] & 0xFF) << 8) | (extractedDSTPPayload[1] & 0xFF); // Sequence number
     System.out.println("Extracted Sequence Number: " + extractedSequenceNumber);
 
-    byte[] extractedMessageBytes = new byte[extractedPayloadLen -2- hashSize]; // Adjust as needed
+    byte[] extractedMessageBytes = new byte[decryptedPayloadLen -2- hashSize]; // Adjust as needed
     System.arraycopy(extractedDSTPPayload, 2, extractedMessageBytes, 0, extractedMessageBytes.length); // Adjust offset if needed;
    System.out.println(Utils.toString(extractedMessageBytes));
     
@@ -156,12 +158,12 @@ public static void send(DatagramPacket packet, DatagramSocket socket)  throws Ex
     sequenceNumber ++;
 
     byte[] inByteArray = new byte[packet.getLength()]; 
-    System.out.print(inByteArray.length);
+    System.out.println("plainTextSize: " +inByteArray.length);
     System.arraycopy(packet.getData(), 0, inByteArray, 0, packet.getLength());
 
     //Initialize tools
      Cipher cipher = Cipher.getInstance(ciphersuite);
-     if(ivSpec != null){
+     if(ivSpec!=null){
          cipher.init(Cipher.ENCRYPT_MODE, key,ivSpec);
      }else{
          cipher.init(Cipher.ENCRYPT_MODE, key);
@@ -182,19 +184,19 @@ public static void send(DatagramPacket packet, DatagramSocket socket)  throws Ex
 
     //Version(16bit) | Release(8bit) | Payload Len(16bit)  
  
-        byte[] DSTPPayload = new byte[2 + packet.getLength()  + sendHash.length]; //+2 is for the sequence number
+        byte[] DSTPPayload = new byte[2 + inByteArray.length  + sendHash.length]; //+2 is for the sequence number
 
         
         DSTPPayload[0] = (byte) ((sequenceNumber >> 8) & 0xFF);
         DSTPPayload[1] = (byte) (sequenceNumber & 0xFF); 
 
-        System.arraycopy(inByteArray, 0, DSTPPayload, 2, packet.getLength());
+        System.arraycopy(inByteArray, 0, DSTPPayload, 2, inByteArray.length);
 
-        System.arraycopy(sendHash, 0, DSTPPayload, 2+packet.getLength(), sendHash.length);
+        System.arraycopy(sendHash, 0, DSTPPayload, 2+inByteArray.length, sendHash.length);
 
-    
+        System.out.println("DSTPPayloadSize: " +DSTPPayload.length);
         byte[] encryptDSTPayload = cipher.doFinal(DSTPPayload);
-
+        System.out.println("Encrypted Payload Size: " +encryptDSTPayload.length);
 
 
         int version = 0x009; 

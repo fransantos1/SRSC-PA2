@@ -1,8 +1,7 @@
+
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-
-
-
 class UseException extends Exception {
 	public UseException() {
 		super();
@@ -20,20 +19,32 @@ public class TFTPClient {
 		String mode="octet"; //default mode
 		String type="";
 		try {
-
-			// new
-			//	TFTPClient <username> <password> <server_host> <tcp_port> <type_r_w> <filename> <mode>
-			// old
-			//   java TFTPClient [host] [Request Type] [Filename] (mode)
-
+			// Process command line
 			if (argv.length == 0)
-				throw new UseException("--Usage--  TFTPClient <username> <password> <server_host> <tcp_port> <type_r_w> <filename> <mode>" );
-			if(argv.length == 3){
+				throw new UseException("--Usage-- \nTFTPClient <username> <password> <server_host> <tcp_port> <type_r_w> <filename> <mode>" );
+
+			/*
+			0 - username
+			1 - password
+			2 - server_host
+			3 - tcp_port
+			4 - type_r_w
+			5 - filename
+			6 - mode
+
+			*/
+
+			//use default mode(octet)
+			if(argv.length == 6){
 				host =argv[2];
 			    type = argv[argv.length - 2];
-			    fileName = argv[argv.length - 1];}
+				System.out.println("type: " + type);
+			    fileName = argv[argv.length - 1];
+				System.out.println("filename: " + fileName);
+			}
+				
 			//use other modes
-			else if(argv.length == 4){
+			else if(argv.length == 7){
 				host = argv[2];
 				mode =argv[argv.length-1];
 				type = argv[argv.length - 3];
@@ -41,26 +52,13 @@ public class TFTPClient {
 			}
 
 			else throw new UseException("wrong command. \n--Usage-- \nocter mode:  TFTPClient [host] [Type(R/W?)] [filename] \nother mode:  TFTPClient [host] [Type(R/W?)] [filename] [mode]");
-			client_shp_phase1 client = new client_shp_phase1();
-			String[] args = {mode, type, fileName};
-			CryptoConfig config = null;
-			try {
-
-				config = client.client(argv[0], argv[1], Integer.parseInt(argv[3]), 0, argv[2], args);
-			} catch (NumberFormatException e) {
-				e.printStackTrace();
-				return;
-			} catch (Exception e) {
-				e.printStackTrace();
-				return;
-			}
-
-			System.out.println("Recieved: " + config.getCiphersuite());
+			//! IN HERE IT DOESNT REALLY MATTER WHAT THE ARGV IS BECAUSE THATS HANDLELED BY THE TFTP ITSELF
+			
 			InetAddress server = InetAddress.getByName(host);
+			System.out.println("Server: " + server);
 			try {
+				CryptoConfig config = client_shp_phase1.client(argv[0], argv[1], Integer.parseInt(argv[3]), 0, argv[2], argv);
 				DSTP.init(config);
-
-				
 			} catch (Exception e) {
 				e.printStackTrace();
 			}

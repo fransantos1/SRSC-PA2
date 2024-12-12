@@ -1,0 +1,2 @@
+Curve:EllipticCurve
+PublicKey:MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEVr1K28B6kCf4k5RL4a1QNQULwyCnwhUksmQ2tR2hIG8ArdKayXAybs29MGkbpJEr1+JB+Ui+coSnoRLJfrlL4Q\=\=
